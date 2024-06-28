@@ -35,7 +35,7 @@ if __name__ == '__main__':
     for sec, color in zip([sec_cup, sec_disc], ['r', 'b']):
         x = sec[0]
         y = sec[1]
-        plt.plot(x, y, color + 'o', markersize=2)
+        plt.scatter(x, y, s=3, c=color)
     # Fit ellipse to cup
     cup = cv2.fitEllipse(np.argwhere(mask == 1))
     cup = ((cup[0][1], cup[0][0]), (cup[1][1], cup[1][0]), cup[2])

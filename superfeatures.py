@@ -87,7 +87,7 @@ def intersection_line_ellipse(m, n, ellipse, x0, y0):
     out = np.array([x.flatten(), y.flatten()])
     # Sort circularly from 0 to 360 degrees
     ang = np.arctan2(out[1,:] - y0, out[0,:] - x0) % (2*np.pi)
-    idx = np.argsort(ang)
+    idx = np.argsort(ang)[::-1]
     out = out[:,idx]
     
     return out
