@@ -1,4 +1,4 @@
-from superfeatures.superfeatures import cdr_profile
+from superfeatures import cdr_profile
 import matplotlib.pyplot as plt
 from PIL import Image
 import numpy as np
