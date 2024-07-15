@@ -4,10 +4,13 @@ This project aims to provide an easy-to-use package to extract retinal features 
 
 ## Table of Contents
 
-- [Installation](#installation)
-- [Usage](#usage)
-- [Contributing](#contributing)
-- [License](#license)
+- [SuperFeatures](#superfeatures)
+  - [Table of Contents](#table-of-contents)
+  - [Installation](#installation)
+  - [Usage](#usage)
+    - [Disclaimer](#disclaimer)
+  - [Contributing](#contributing)
+  - [License](#license)
 
 ## Installation
 
