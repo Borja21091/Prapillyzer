@@ -1,4 +1,4 @@
-import torch
+import cv2
 import numpy as np
     
 def intersection_line_ellipse(m, n, ellipse, x0, y0):
@@ -50,61 +50,69 @@ def implicit_ellipse(ellipse):
     
     return A, B, C, D, E, F
 
-def get_centroid(mask:torch.Tensor)->tuple:
+def get_centroid(mask:np.ndarray)->tuple:
     """
     Compute the centroid of a binary mask.
     
     Parameters
     ----------
-    mask : torch.Tensor
-        Binary mask as a torch.Tensor object.
+    mask : np.ndarray
+        Binary mask as a np.ndarray object.
         
     Returns
     -------
     tuple
         Tuple containing the centroid coordinates (x, y).
-    """
-    # Check mask
-    assert mask.ndim == 2, "Mask must be a 2D array."
-    assert mask.dtype == torch.uint8, "Mask must be a binary image."
-    assert torch.unique(mask).size(0) == 2, "Mask must contain 2 unique pixel values."
-    
+    """    
     # Compute centroid
-    y, x = torch.where(mask == 1)
-    x = x.float()
-    y = y.float()
-    x_centroid = torch.mean(x)
-    y_centroid = torch.mean(y)
+    x_centroid = np.sum(np.argwhere(mask)[:,1]) / np.sum(mask)
+    y_centroid = np.sum(np.argwhere(mask)[:,0]) / np.sum(mask)
     
     return x_centroid, y_centroid
 
-def get_rotation(centroid:tuple, radians:bool=True)->float:
+def get_rotation(centroid_fovea:tuple, centroid_disc:tuple, radians:bool=True)->float:
     """
-    Compute the rotation angle of a binary mask.
-    
-    Parameters
-    ----------
-    centroid : tuple
-        Tuple containing the centroid coordinates (x, y).
+    Calculate rotation angle between two points.
+
+    Args:
+        centroid_fovea (tuple): (x, y) coordinates of the fovea centroid.
+        centroid_disc (tuple): (x, y) coordinates of the disc centroid.
+        radians (bool, optional): Radians/Degrees of output. Defaults to radians.
         
-    radians : bool
-        If True, the rotation angle is returned in radians. If False, the rotation angle is returned in degrees.
-        
-    Returns
-    -------
-    float
-        Rotation angle in degrees.
+    Returns:
+        float: Rotation angle in radians or degrees.
     """
-    # Check centroid
-    assert isinstance(centroid, tuple), "Centroid must be a tuple."
-    assert len(centroid) == 2, "Centroid must contain two elements."
-    
-    # Compute rotation
-    x, y = centroid
-    rotation = torch.atan2(y, x)
+    # Compute rotation angle
+    rotation = np.arctan2(centroid_disc[1] - centroid_fovea[1], centroid_disc[0] - centroid_fovea[0])
     
     # Convert to degrees
     if not radians:
-        rotation = torch.rad2deg(rotation)
+        rotation = np.rad2deg(rotation)
     
     return rotation
+
+def rotate_image(ang:float, img:np.ndarray)->np.ndarray:
+    """
+    Rotate an image by a given angle.
+    
+    Parameters
+    ----------
+    ang : float
+        Rotation angle in radians.
+        
+    img : np.ndarray
+        Input image as a np.ndarray object.
+        
+    Returns
+    -------
+    np.ndarray
+        Rotated image.
+    """
+    
+    # Rotation matrix
+    rot_matrix = cv2.getRotationMatrix2D((img.shape[1]//2, img.shape[0]//2), np.rad2deg(ang), 1)
+    
+    # Rotate image 'ang' radians
+    img = cv2.warpAffine(img, rot_matrix, (img.shape[1], img.shape[0]))
+    
+    return img
