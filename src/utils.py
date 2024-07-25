@@ -16,7 +16,7 @@ def intersection_line_ellipse(m, n, ellipse, x0, y0):
     y = np.tile(m,2).reshape(-1,1)*x + np.tile(n,2).reshape(-1,1)
     
     # Replace zero values with nan (vertical intersections)
-    y[np.isclose(y, 0)] = np.nan
+    y[np.isclose(y, 0) | (abs(y) > 1e08)] = np.nan
     
     # Handle vertical intersections
     y_ = np.roots([C, B*x0 + E, A*x0**2 + D*x0 + F])

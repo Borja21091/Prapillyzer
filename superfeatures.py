@@ -89,20 +89,23 @@ def cdr_profile(mask:np.ndarray, ang_step:int=15) -> list:
         
     # Sort ellipses by area, smallest (cup) to largest (disc)
     ellipses = sorted(ellipses, key=lambda x: x[1][0]*x[1][1])
-    x0, y0 = ellipses[0][0]
+    
+    # Calculate centre as the midpoint between cup and disc ellipses centres
+    centre = ((np.array(ellipses[0][0]) + np.array(ellipses[1][0])) / 2).reshape(-1,1)
+    x0, y0 = centre[:,0]
     
     # Intersection line with ellipses
     m = np.array([np.tan(np.deg2rad(ang)) for ang in np.arange(0, 180, ang_step)])
-    n = np.array([ellipses[0][0][1] - m_ * ellipses[0][0][0] for m_ in m])
+    n = np.array([y0 - m_ * x0 for m_ in m])
     intersections = [intersection_line_ellipse(m, n, e, x0, y0) for e in ellipses]
     
     # Compute cup-to-disc ratio profile
-    centre = np.array(ellipses[0][0]).reshape(-1,1)
     radii = np.array([distance.cdist(centre.T, i.T) for i in intersections])
     cdr_profile = radii[0,:] / radii[1,:]   
     
     # Prepare output
     out = []
+    out.append([x0, y0])
     out.append(intersections[0])
     out.append(intersections[1])
     out.append(np.vstack((np.arange(0, 360, ang_step), cdr_profile)))
