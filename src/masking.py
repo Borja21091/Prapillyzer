@@ -19,6 +19,31 @@ class DeepLabV3MobileNetV2(nn.Module):
         x = nn.functional.interpolate(x, size=input_shape, mode='bilinear', align_corners=False)
         return {'out': x}
 
+def mask_cup(img:torch.Tensor) -> torch.Tensor:
+    """
+    Cup masking of a fundus image.
+
+    Args:
+        img (torch.Tensor): input RGB image as a torch.Tensor object.
+
+    Returns:
+        torch.Tensor: tensor with the cup masked. 0 values are considered background.    
+    """
+    # Load pre-trained model
+    model_path = os.path.join(os.path.dirname(__file__), 'models/cup.pth')
+    model = torch.load(model_path)
+    
+    # Mask cup
+    img = img.unsqueeze(0)
+    mask = model(img)
+    mask = torch.argmax(mask, dim=1).squeeze(0)
+    
+    # Raise error if cup is not detected
+    if mask.sum() == 0:
+        raise ValueError('Cup not detected.')
+    
+    return mask
+
 def mask_fovea(img:torch.Tensor) -> torch.Tensor:
     """
     Fovea masking of a fundus image.
