@@ -184,9 +184,9 @@ def cdr_profile(mask:np.ndarray, ang_step:int=15) -> list:
     assert ang_step <= 180, "Angular step must be less than or equal to 180."
     assert np.mod(180, ang_step) == 0, "180 must be divisible by the angular step."
     
-    # Compute ellipses for each unique pixel value except 0
+    # Compute ellipses for pixel values 1 and 2 (disc and cup)
     ellipses = []
-    for i in np.unique(mask)[1:]:
+    for i in [1, 2]:
         ellipse = cv2.fitEllipse(np.argwhere(mask == i))
         ellipse = ((ellipse[0][1], ellipse[0][0]), (ellipse[1][1], ellipse[1][0]), ellipse[2])
         ellipses.append(ellipse)
@@ -202,7 +202,7 @@ def cdr_profile(mask:np.ndarray, ang_step:int=15) -> list:
     m = np.array([np.tan(np.deg2rad(ang)) for ang in np.arange(0, 180, ang_step)])
     n = np.array([y0 - m_ * x0 for m_ in m])
     intersections = [intersection_line_ellipse(m, n, e, x0, y0) for e in ellipses]
-    
+    print(intersections)
     # Compute cup-to-disc ratio profile
     radii = np.array([distance.cdist(centre.T, i.T) for i in intersections])
     cdr_profile = radii[0,:] / radii[1,:]   

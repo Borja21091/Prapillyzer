@@ -20,14 +20,14 @@ def intersection_line_ellipse(m, n, ellipse, x0, y0):
     ang_step = 360 / len(y)
     
     # Find index of vertical intersections (90, 270 degrees)
-    idx = ((np.array([90, 270]) / ang_step) + 1).astype(int)
+    idx = (np.array([90, 270]) / ang_step).astype(int)
     
     # Handle vertical intersections
     y_ = np.roots([C, B*x0 + E, A*x0**2 + D*x0 + F])
     y_ = np.sort(y_, axis=0)[::-1].reshape(-1,1) # Sort in descending order
     
     # Replace with vertical intersections
-    x[idx] = x0
+    x[idx,0] = x0
     y[idx] = y_
     
     # Prepare output
