@@ -13,9 +13,12 @@ from torchvision.transforms import Compose, Resize, ToTensor, Normalize
 from src.utils import intersection_line_ellipse, get_centroid, get_rotation, rotate_image, fit_ellipse
 
 def process_images_in_directory(directory: str):
+    
     # Delete results.csv if it exists
     if os.path.exists('results.csv'):
         os.remove('results.csv')
+        
+    # Process images in directory
     for filename in os.listdir(directory):
         if filename.endswith(".jpg") or filename.endswith(".png"):
             print(f"Processing {filename}")
@@ -24,14 +27,24 @@ def process_images_in_directory(directory: str):
             process_image(img, filename)
 
 def process_image(img: Image, filename: str):
+    """Process an image and save the results to a CSV file.
+
+    Args:
+        img (Image): input image as a PIL Image object.
+        filename (str): image filename.
+    """
+    # Prepare dictionary to store results
     info = {'filename': filename}
+    
+    # Generate masks
     masks = generate_masks(img)
     if not masks:
         print(f"Areas not detected in {filename}")
         info.update({'pcdr': None})
         save_results_to_csv(info)
         return
-
+    
+    # Clean segmentations and fit ellipses to disc and cup
     cleaned_masks = clean_segmentations(masks)    
     ellipses = fit_ellipse(cleaned_masks)
     if not ellipses:
@@ -39,24 +52,42 @@ def process_image(img: Image, filename: str):
         info.update({'pcdr': None})
         save_results_to_csv(info)
         return
-
+    
+    # Generate unified mask and save it
     unified_mask = merge_masks(cleaned_masks)
     save_unified_mask(unified_mask, filename)
+    
+    # Level image and compute cup-to-disc ratio profile
     img_level, fov_coord, disc_coord, ang = level_image(img, masks.get('fovea'), masks.get('disc'))
     mask_level = rotate_image(ang, unified_mask)
     _, _, _, cdr = cdr_profile(mask_level.astype(np.uint8), ang_step=5)
+    
+    # Update dictionary with results and save to CSV
     info.update({f'pcdr_{angle:d}': v for angle, v in zip(cdr[0,:].astype(int), cdr[1,:])})
-
     save_results_to_csv(info)
 
 def save_unified_mask(mask: np.ndarray, filename: str):
+    """Save a mask to a file.
+
+    Args:
+        mask (np.ndarray): mask as a numpy array. 0 values are considered background.
+        filename (str): mask filename.
+    """
     mask_path = './data/masks'
     if not os.path.exists(mask_path):
         os.makedirs(mask_path)
     cv2.imwrite(mask_path + '/' + filename, (mask * 255 / max(mask.flatten())).astype(np.uint8))
 
 def generate_masks(img: Image) -> dict:
-    # Convert image to tensor
+    """Generate masks for the disc, cup and fovea.
+
+    Args:
+        img (Image): input image as a PIL Image object.
+
+    Returns:
+        dict: dictionary containing the masks for the disc, cup and fovea.
+    """
+    # Convert image to tensor for processing
     transform_disc = Compose([Resize((512, 512)), ToTensor(), Normalize((0.5,), (0.5,))])
     transform_fovea = Compose([Resize((224, 224)), ToTensor()])
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -76,25 +107,52 @@ def generate_masks(img: Image) -> dict:
     return output
 
 def clean_segmentations(masks: dict) -> dict:
+    """Clean segmentations by removing small areas and keeping the roundest one.
+
+    Args:
+        masks (dict): dictionary containing the masks for the disc, cup and fovea.
+
+    Returns:
+        dict: dictionary containing the cleaned masks for the disc, cup and fovea.
+    """
+    # Initialize dictionary to store cleaned masks
     cleaned_masks = {}
+    
     for key, mask in masks.items():
+        
+        # Open and close operations to remove small areas
         cleaned_mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
         cleaned_mask = cv2.morphologyEx(cleaned_mask, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+        
+        # Label and compute roundness
         cleaned_mask_labelled = label(cleaned_mask)
         props = regionprops_table(cleaned_mask_labelled, properties=('area', 'perimeter'))
         radii = props.get('perimeter') / (2 * np.pi) + 0.5
         roundness = roundness = [(4 * np.pi * props.get('area')[idx] / (props.get('perimeter')[idx] ** 2)) * (1 - 0.5 * r)**2 
                                 if props.get('perimeter')[idx] != 0 else 0.0 for idx, r in enumerate(radii)]
+        
         if len(roundness) != 0:
-            # Remove the ones with an area smaller than 50 px
+            # Remove areas smaller than 50 px
             roundness = np.array(roundness)
             roundness[props.get('area') < 50] = 0
+            # Keep the roundest area
             idx = np.argmax(roundness)
             cleaned_mask = (cleaned_mask_labelled == idx + 1)
+            
+        # Store cleaned mask in dictionary
         cleaned_masks[key] = cleaned_mask.astype(np.uint8)
+        
     return cleaned_masks
 
 def merge_masks(masks: dict) -> np.ndarray:
+    """Merge binary masks into a single mask.
+
+    Args:
+        masks (dict): dictionary containing the masks to be merged. All masks must have the same shape. 0 values are considered background.
+
+    Returns:
+        np.ndarray: unified mask.
+    """
     unified_mask = np.zeros_like(next(iter(masks.values()))).astype(float)
     for idx, mask in enumerate(masks.values()):
         unified_mask[mask.astype(bool)] = idx + 1
