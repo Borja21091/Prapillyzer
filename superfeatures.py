@@ -1,12 +1,86 @@
+import os
 import cv2
 import torch
 import numpy as np
+import pandas as pd
+from PIL import Image
 import scipy.spatial.distance as distance
-from src.masking import mask_fovea, mask_disc
+from skimage.measure import label, regionprops_table
+from src.masking import mask_fovea, mask_disc, mask_cup
 from torchvision.transforms import Compose, Resize, ToTensor, Normalize
-from src.utils import intersection_line_ellipse, get_centroid, get_rotation, rotate_image
+from src.utils import intersection_line_ellipse, get_centroid, get_rotation, rotate_image, fit_ellipse
 
-def level_image(img) -> np.ndarray:
+def process_images_in_directory(directory: str):
+    for filename in os.listdir(directory):
+        if filename.endswith(".jpg") or filename.endswith(".png"):
+            img_path = os.path.join(directory, filename)
+            img = Image.open(img_path)
+            process_image(img, filename)
+
+def process_image(img: Image, filename: str):
+    info = {'filename': filename}
+    masks = generate_masks(img)
+    if not masks:
+        print(f"Areas not detected in {filename}")
+        info.update({'pcdr': None})
+        save_results_to_csv(info)
+        return
+
+    cleaned_masks = clean_segmentations(masks)
+    ellipses = fit_ellipse(cleaned_masks)
+    if not ellipses:
+        print(f"Ellipses not properly contained in {filename}")
+        info.update({'pcdr': None})
+        save_results_to_csv(info)
+        return
+
+    unified_mask = merge_masks(cleaned_masks)
+    img_level, fov_coord, disc_coord, ang = level_image(img, unified_mask)
+    mask_level = rotate_image(ang, unified_mask)
+    _, _, _, cdr = cdr_profile(mask_level, ang_step=5)
+    pcdr = cdr[1]
+    info.update({'pcdr': pcdr})
+
+    save_results_to_csv(info)
+
+def generate_masks(img: Image) -> dict:
+    mask_d = mask_disc(img)
+    mask_c = mask_cup(img)
+    mask_f = mask_fovea(img)
+    if mask_f is None or mask_d is None:
+        return None
+    return {'disc': mask_d, 'cup': mask_c, 'fovea': mask_f}
+
+def clean_segmentations(masks: dict) -> dict:
+    cleaned_masks = {}
+    for key, mask in masks.items():
+        cleaned_mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
+        cleaned_mask = cv2.morphologyEx(cleaned_mask, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+        cleaned_mask_labelled = label(cleaned_mask)
+        props = regionprops_table(cleaned_mask_labelled, properties=('area', 'perimeter'))
+        radii = props.get('perimeter') / (2 * np.pi) + 0.5
+        roundness = roundness = [(4 * np.pi * props.get('area')[idx] / (props.get('perimeter')[idx] ** 2)) * (1 - 0.5 * r)**2 
+                                if props.get('perimeter')[idx] != 0 else 0.0 for idx, r in enumerate(radii)]
+        if len(roundness) != 0:
+            # Remove the ones with an area smaller than 50 px
+            roundness = np.array(roundness)
+            roundness[props.get('area') < 50] = 0
+            idx = np.argmax(roundness)
+            cleaned_mask = (cleaned_mask_labelled == idx + 1)
+        cleaned_masks[key] = cleaned_mask
+    return cleaned_masks
+
+def merge_masks(masks: dict) -> np.ndarray:
+    unified_mask = np.zeros_like(next(iter(masks.values())))
+    for idx, mask in enumerate(masks.values()):
+        unified_mask[mask] = idx + 1
+    return unified_mask
+
+def save_results_to_csv(info:dict):
+    df = pd.DataFrame(info, index=[0])
+    df.to_csv('results.csv', index=False)
+
+def level_image(img:Image, mask_f:np.ndarray=None, mask_d:np.ndarray=None) -> np.ndarray:
     """
     Rotate a fundus image to make the line connecting the fovea and the disc horizontal.
     
@@ -32,12 +106,15 @@ def level_image(img) -> np.ndarray:
     img4disc = transform_disc(img).to(device)
     
     # Mask fovea and disc
-    mask_f = mask_fovea(img4fovea)
-    mask_d = mask_disc(img4disc)
+    if mask_f is None:
+        mask_f = mask_fovea(img4fovea).cpu().numpy()
+
+    if mask_d is None:
+        mask_d = mask_disc(img4disc).cpu().numpy()
     
     # Compute centroids
-    x_f, y_f = get_centroid(mask_f.cpu().numpy())
-    x_d, y_d = get_centroid(mask_d.cpu().numpy())
+    x_f, y_f = get_centroid(mask_f)
+    x_d, y_d = get_centroid(mask_d)
     
     # Scale to original image size
     x_f *= np.array(img).shape[1]/224
@@ -111,3 +188,6 @@ def cdr_profile(mask:np.ndarray, ang_step:int=15) -> list:
     out.append(np.vstack((np.arange(0, 360, ang_step), cdr_profile)))
     
     return out
+
+if __name__ == '__main__':
+    process_images_in_directory('data')

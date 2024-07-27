@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from scipy.optimize import fsolve
     
 def intersection_line_ellipse(m, n, ellipse, x0, y0):
     
@@ -50,6 +51,38 @@ def implicit_ellipse(ellipse):
     
     return A, B, C, D, E, F
 
+def fit_ellipse(masks: dict) -> dict:
+    ellipses = {}
+    keys = ['cup', 'disc']
+    for key in keys:
+        mask = masks.get(key)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if len(contours) == 0:
+            return None
+        ellipse = cv2.fitEllipse(contours[0])
+        ellipses[key] = ellipse
+    if not('cup' in ellipses) or not('disc' in ellipses):
+        return None
+    if not is_ellipse_contained(ellipses['cup'], ellipses['disc']):
+        return None
+    return ellipses
+
+def is_ellipse_contained(inner:cv2.RotatedRect, outter:cv2.RotatedRect) -> bool:
+    
+    # Templates of zeros (512 x 512)
+    _cup = np.zeros((512, 512), bool)
+    _disc = np.zeros((512, 512), bool)
+    
+    # Draw ellipses
+    cv2.ellipse(_cup, inner, 1, -1)
+    cv2.ellipse(_disc, outter, 1, -1)
+    
+    # Logical AND
+    _and = np.logical_and(_cup, _disc)
+    
+    # Check if cup == cup AND disc
+    return np.array_equal(_cup, _and)
+    
 def get_centroid(mask:np.ndarray)->tuple:
     """
     Compute the centroid of a binary mask.
