@@ -16,16 +16,19 @@ def intersection_line_ellipse(m, n, ellipse, x0, y0):
     # x = np.vstack((x[0,:].T, x[1,::-1].T)).reshape(-1, 1)
     y = np.tile(m,2).reshape(-1,1)*x + np.tile(n,2).reshape(-1,1)
     
-    # Replace zero values with nan (vertical intersections)
-    y[np.isclose(y, 0) | (abs(y) > 1e08)] = np.nan
+    # Angle subdivision
+    ang_step = 360 / len(y)
+    
+    # Find index of vertical intersections (90, 270 degrees)
+    idx = ((np.array([90, 270]) / ang_step) + 1).astype(int)
     
     # Handle vertical intersections
     y_ = np.roots([C, B*x0 + E, A*x0**2 + D*x0 + F])
-    y_ = np.sort(y_, axis=0)[::-1] # Sort in descending order
+    y_ = np.sort(y_, axis=0)[::-1].reshape(-1,1) # Sort in descending order
     
-    # Replace nan values with vertical intersections
-    x[np.isnan(y)] = x0
-    y[np.isnan(y)] = y_
+    # Replace with vertical intersections
+    x[idx] = x0
+    y[idx] = y_
     
     # Prepare output
     out = np.array([x.flatten(), y.flatten()])
@@ -70,8 +73,8 @@ def fit_ellipse(masks: dict) -> dict:
 def is_ellipse_contained(inner:cv2.RotatedRect, outter:cv2.RotatedRect) -> bool:
     
     # Templates of zeros (512 x 512)
-    _cup = np.zeros((512, 512), bool)
-    _disc = np.zeros((512, 512), bool)
+    _cup = np.zeros((512, 512), np.uint8)
+    _disc = np.zeros((512, 512), np.uint8)
     
     # Draw ellipses
     cv2.ellipse(_cup, inner, 1, -1)

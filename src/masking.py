@@ -69,6 +69,10 @@ def mask_fovea(img:torch.Tensor) -> torch.Tensor:
     # Raise error if fovea is not detected
     if mask.sum() == 0:
         raise ValueError('Fovea not detected.')
+    
+    # Resize mask to original image size if needed
+    if mask.shape != torch.Size([512, 512]):
+        mask = nn.functional.interpolate(mask.to(torch.uint8).unsqueeze(0).unsqueeze(0), size=(512, 512), mode='nearest').squeeze(0).squeeze(0)
 
     return mask
 

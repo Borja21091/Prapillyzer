@@ -5,14 +5,20 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 import scipy.spatial.distance as distance
+from src.masking import DeepLabV3MobileNetV2
+from matplotlib import pyplot as plt
 from skimage.measure import label, regionprops_table
 from src.masking import mask_fovea, mask_disc, mask_cup
 from torchvision.transforms import Compose, Resize, ToTensor, Normalize
 from src.utils import intersection_line_ellipse, get_centroid, get_rotation, rotate_image, fit_ellipse
 
 def process_images_in_directory(directory: str):
+    # Delete results.csv if it exists
+    if os.path.exists('results.csv'):
+        os.remove('results.csv')
     for filename in os.listdir(directory):
         if filename.endswith(".jpg") or filename.endswith(".png"):
+            print(f"Processing {filename}")
             img_path = os.path.join(directory, filename)
             img = Image.open(img_path)
             process_image(img, filename)
@@ -26,7 +32,7 @@ def process_image(img: Image, filename: str):
         save_results_to_csv(info)
         return
 
-    cleaned_masks = clean_segmentations(masks)
+    cleaned_masks = clean_segmentations(masks)    
     ellipses = fit_ellipse(cleaned_masks)
     if not ellipses:
         print(f"Ellipses not properly contained in {filename}")
@@ -35,21 +41,39 @@ def process_image(img: Image, filename: str):
         return
 
     unified_mask = merge_masks(cleaned_masks)
-    img_level, fov_coord, disc_coord, ang = level_image(img, unified_mask)
+    save_unified_mask(unified_mask, filename)
+    img_level, fov_coord, disc_coord, ang = level_image(img, masks.get('fovea'), masks.get('disc'))
     mask_level = rotate_image(ang, unified_mask)
-    _, _, _, cdr = cdr_profile(mask_level, ang_step=5)
-    pcdr = cdr[1]
-    info.update({'pcdr': pcdr})
+    _, _, _, cdr = cdr_profile(mask_level.astype(np.uint8), ang_step=5)
+    info.update({f'pcdr_{angle:d}': v for angle, v in zip(cdr[0,:].astype(int), cdr[1,:])})
 
     save_results_to_csv(info)
 
+def save_unified_mask(mask: np.ndarray, filename: str):
+    mask_path = './data/masks'
+    if not os.path.exists(mask_path):
+        os.makedirs(mask_path)
+    cv2.imwrite(mask_path + '/' + filename, (mask * 255 / max(mask.flatten())).astype(np.uint8))
+
 def generate_masks(img: Image) -> dict:
-    mask_d = mask_disc(img)
-    mask_c = mask_cup(img)
-    mask_f = mask_fovea(img)
-    if mask_f is None or mask_d is None:
-        return None
-    return {'disc': mask_d, 'cup': mask_c, 'fovea': mask_f}
+    # Convert image to tensor
+    transform_disc = Compose([Resize((512, 512)), ToTensor(), Normalize((0.5,), (0.5,))])
+    transform_fovea = Compose([Resize((224, 224)), ToTensor()])
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    img4fovea= transform_fovea(img).to(device)
+    img4disc_cup = transform_disc(img).to(device)
+    
+    # Process image
+    mask_d = mask_disc(img4disc_cup)
+    mask_c = mask_cup(img4disc_cup)
+    mask_f = mask_fovea(img4fovea)
+    
+    # Prepare output
+    keys = ['disc', 'cup', 'fovea']
+    values = [mask_d, mask_c, mask_f]
+    output = {k: v.to(torch.uint8).cpu().numpy() if sum(v.flatten() != 0) else None for k, v in zip(keys, values)}
+    
+    return output
 
 def clean_segmentations(masks: dict) -> dict:
     cleaned_masks = {}
@@ -67,18 +91,21 @@ def clean_segmentations(masks: dict) -> dict:
             roundness[props.get('area') < 50] = 0
             idx = np.argmax(roundness)
             cleaned_mask = (cleaned_mask_labelled == idx + 1)
-        cleaned_masks[key] = cleaned_mask
+        cleaned_masks[key] = cleaned_mask.astype(np.uint8)
     return cleaned_masks
 
 def merge_masks(masks: dict) -> np.ndarray:
-    unified_mask = np.zeros_like(next(iter(masks.values())))
+    unified_mask = np.zeros_like(next(iter(masks.values()))).astype(float)
     for idx, mask in enumerate(masks.values()):
-        unified_mask[mask] = idx + 1
+        unified_mask[mask.astype(bool)] = idx + 1
     return unified_mask
 
 def save_results_to_csv(info:dict):
     df = pd.DataFrame(info, index=[0])
-    df.to_csv('results.csv', index=False)
+    if not os.path.exists('results.csv'):
+        df.to_csv('results.csv', index=False)
+    else:
+        df.to_csv('results.csv', mode='a', header=False, index=False)
 
 def level_image(img:Image, mask_f:np.ndarray=None, mask_d:np.ndarray=None) -> np.ndarray:
     """
@@ -150,7 +177,7 @@ def cdr_profile(mask:np.ndarray, ang_step:int=15) -> list:
     # Check mask
     assert mask.ndim == 2, "Mask must be a 2D array."
     assert mask.dtype == np.uint8, "Mask must be a greyscale image."
-    assert np.unique(mask).size == 3, "Mask must contain 3 unique pixel values, 0 being 'Background'."
+    assert np.unique(mask).size >= 3, "Mask must contain at least 3 unique pixel values, 0 being 'Background', 1 'Disc', 2 'Cup'."
     
     # Check angular step
     assert ang_step >= 1, "Angular step must be greater than or equal to 1."
