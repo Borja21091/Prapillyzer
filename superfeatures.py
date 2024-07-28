@@ -18,9 +18,10 @@ def process_images_in_directory(directory: str):
     # Process images in directory
     file_list = os.listdir(directory)
     file_list.sort()
-    for filename in file_list:
+    n = len(file_list)
+    for i, filename in enumerate(file_list):
         if filename.endswith(".jpg") or filename.endswith(".png"):
-            print(f"Processing {filename}")
+            print(f"({i + 1}/{n}) Processing {filename}")
             img_path = os.path.join(directory, filename)
             img = Image.open(img_path)
             process_image(img, filename)
