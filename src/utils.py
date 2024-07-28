@@ -13,7 +13,6 @@ def intersection_line_ellipse(m, n, ellipse, x0, y0):
     delta = b**2 - 4*a*c
     x = np.array([(-b + np.sqrt(delta)) / (2*a), (-b - np.sqrt(delta)) / (2*a)])
     x = x.reshape(-1, 1) # Reshape to column vector
-    # x = np.vstack((x[0,:].T, x[1,::-1].T)).reshape(-1, 1)
     y = np.tile(m,2).reshape(-1,1)*x + np.tile(n,2).reshape(-1,1)
     
     # Angle subdivision
@@ -53,22 +52,6 @@ def implicit_ellipse(ellipse):
     F = A*x0**2 + B*x0*y0 + C*y0**2 - a**2*b**2
     
     return A, B, C, D, E, F
-
-def fit_ellipse(masks: dict) -> dict:
-    ellipses = {}
-    keys = ['cup', 'disc']
-    for key in keys:
-        mask = masks.get(key)
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if len(contours) == 0:
-            return None
-        ellipse = cv2.fitEllipse(contours[0])
-        ellipses[key] = ellipse
-    if not('cup' in ellipses) or not('disc' in ellipses):
-        return None
-    if not is_ellipse_contained(ellipses['cup'], ellipses['disc']):
-        return None
-    return ellipses
 
 def is_ellipse_contained(inner:cv2.RotatedRect, outter:cv2.RotatedRect) -> bool:
     
@@ -119,7 +102,8 @@ def get_rotation(centroid_fovea:tuple, centroid_disc:tuple, radians:bool=True)->
         float: Rotation angle in radians or degrees.
     """
     # Compute rotation angle
-    rotation = np.arctan2(centroid_disc[1] - centroid_fovea[1], centroid_disc[0] - centroid_fovea[0])
+    # rotation = np.arctan2(centroid_disc[1] - centroid_fovea[1], centroid_disc[0] - centroid_fovea[0])
+    rotation = np.arctan((centroid_disc[1] - centroid_fovea[1]) / (centroid_disc[0] - centroid_fovea[0]))
     
     # Convert to degrees
     if not radians:
