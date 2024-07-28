@@ -118,8 +118,14 @@ def generate_masks(img: Image) -> dict:
     # Prepare output
     keys = ['disc', 'cup', 'fovea']
     values = [mask_d, mask_c, mask_f]
-    output = {k: v.to(torch.uint8).cpu().numpy() if sum(v.flatten() != 0) else None for k, v in zip(keys, values)}
+    output = {}
     
+    for k, v in zip(keys, values):
+        if torch.any(v):
+            output[k] = v.to(torch.uint8).cpu().numpy()
+        else:
+            output[k] = None
+            
     return output
 
 def clean_segmentations(masks: dict) -> dict:
@@ -137,8 +143,8 @@ def clean_segmentations(masks: dict) -> dict:
     for key, mask in masks.items():
         
         # Open and close operations to remove small areas
-        cleaned_mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
-        cleaned_mask = cv2.morphologyEx(cleaned_mask, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+        cleaned_mask1 = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((15, 15), np.uint8))
+        cleaned_mask = cv2.morphologyEx(cleaned_mask1, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
         
         # Label and compute roundness
         cleaned_mask_labelled = label(cleaned_mask)
