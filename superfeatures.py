@@ -2,15 +2,12 @@ import os
 import cv2
 import torch
 import numpy as np
-import pandas as pd
 from PIL import Image
+from src.utils import *
 import scipy.spatial.distance as distance
 from src.masking import DeepLabV3MobileNetV2
-from matplotlib import pyplot as plt
-from skimage.measure import label, regionprops_table
-from src.masking import mask_fovea, mask_disc, mask_cup
+from src.masking import mask_fovea, mask_disc
 from torchvision.transforms import Compose, Resize, ToTensor, Normalize
-from src.utils import intersection_line_ellipse, get_centroid, get_rotation, rotate_image, is_ellipse_contained
 
 def process_images_in_directory(directory: str):
     
@@ -19,7 +16,9 @@ def process_images_in_directory(directory: str):
         os.remove('results.csv')
         
     # Process images in directory
-    for filename in os.listdir(directory):
+    file_list = os.listdir(directory)
+    file_list.sort()
+    for filename in file_list:
         if filename.endswith(".jpg") or filename.endswith(".png"):
             print(f"Processing {filename}")
             img_path = os.path.join(directory, filename)
@@ -34,14 +33,15 @@ def process_image(img: Image, filename: str):
         filename (str): image filename.
     """
     # Prepare dictionary to store results
-    info = {'filename': filename, 
-            'eye': 'R'}
+    info = {'filename': filename}
     
     # Generate masks
-    masks = generate_masks(img)
-    if not masks:
-        print(f"Areas not detected in {filename}")
-        info.update({'pcdr': None})
+    try:
+        masks = generate_masks(img)
+        info.update({'masks': True})
+    except:
+        print(f"Error generating masks for {filename}.")
+        info.update({'masks': False})
         save_results_to_csv(info)
         return
     
@@ -57,7 +57,14 @@ def process_image(img: Image, filename: str):
     mask_level = rotate_image(ang, unified_mask)
     
     # Compute cup-to-disc ratio profile
-    centre, sec_cup, sec_disc, cdr, ellipses = cdr_profile(mask_level, ang_step=5)
+    try:
+        centre, sec_cup, sec_disc, cdr, ellipses = cdr_profile(mask_level, ang_step=5)
+        info.update({'pcdr': True})
+    except:
+        print(f"Error computing cup-to-disc ratio profile for {filename}.")
+        info.update({'pcdr': False})
+        save_results_to_csv(info)
+        return
     
     # Account for L-R eye [N S T I N]
     if fov_coord[0] > disc_coord[0]: # Fovea is to the right of the disc (left eye)
@@ -72,9 +79,8 @@ def process_image(img: Image, filename: str):
         pcdr = np.flip(np.hstack((pcdr[idx:], pcdr[:idx])))
         # Add angle
         cdr = np.vstack((angle, pcdr))
-    
-    # Save levelled mask
-    save_unified_mask(mask_level, ellipses, filename)
+    else:
+        info.update({'eye': 'R'})
     
     # Update dictionary with results and save to CSV
     info.update({'fovea_x': fov_coord[0], 'fovea_y': fov_coord[1],
@@ -84,177 +90,15 @@ def process_image(img: Image, filename: str):
     info.update({f'pcdr_{angle:d}': v for angle, v in zip(cdr[0,:].astype(int), cdr[1,:])})
     save_results_to_csv(info)
     
-    # Save cdr profile plot
-    save_pcdr_plot(cdr, filename)
+    # # Save levelled mask
+    # save_unified_mask(mask_level, ellipses, filename)
     
-    # Save levelled image with ellipses
+    # # Save cdr profile plot
+    # save_pcdr_plot(cdr, filename)
+    
+    # # Save levelled image with ellipses
     # plot_levelled_image(img_level, centre, (sec_cup, sec_disc), ellipses, filename)
     
-def plot_levelled_image(img: np.ndarray, centre: tuple, intersections: tuple, ellipses: list, filename: str):
-    
-    plt.figure(figsize=(5.12, 5.12))
-    
-    # Plot intersection points
-    sec_cup, sec_disc = intersections
-    for sec, color in zip([sec_cup, sec_disc], ['r', 'b']):
-        x = sec[0]
-        y = sec[1]
-        plt.scatter(x, y, s=3, c=color)
-        
-    # Add cup ellipse
-    cup = ellipses[0]
-    cv2.ellipse(img, cup, (0, 255, 0), 1, lineType=cv2.LINE_AA)
-    
-    # Add disc ellipse
-    disc = ellipses[1]
-    cv2.ellipse(img, disc, (0, 0, 255), 1, lineType=cv2.LINE_AA)
-    
-    # Plot the lines joining the intersection points
-    for i in range(len(sec_cup[0])):
-        plt.plot([sec_cup[0][i], sec_disc[0][i]], [sec_cup[1][i], sec_disc[1][i]], 'k--', linewidth=0.5)
-        
-    # Show levelled image
-    plt.imshow(img)
-    
-    # Plot centre
-    plt.scatter(centre[0], centre[1], s=10, c='g')
-    
-    # Add title
-    plt.title(filename.split('.')[0])
-    
-    plt.show()
-
-def save_pcdr_plot(cdr: list, filename: str):
-    
-    # Plot results
-    plt.figure(figsize=(10, 5))
-    plt.plot(cdr[0,:], cdr[1,:], 'k--', linewidth=0.5)
-    plt.scatter(cdr[0,:], cdr[1,:], s=3, c='k')
-    plt.xlabel('Angle (degrees)')
-    plt.ylabel('Cup-to-disc ratio')
-    plt.title('Cup-to-disc ratio profile')
-    plt.ylim([0, 1])
-    plt.grid()
-    # Overlay N S T I N labels on top of the X axis
-    angle = [0, 90, 180, 270, 360]
-    quadrant = ['N', 'S', 'T', 'I', 'N']
-    for a, q in zip(angle, quadrant):
-        plt.text(a, 0.025, q, fontsize=20, color='k', fontweight='bold')
-        
-    # Save plot
-    plot_path = './data/pcdr_plots'
-    if not os.path.exists(plot_path):
-        os.makedirs(plot_path)
-    plt.savefig(plot_path + '/' + filename.split('.')[0] + '.png')
-    plt.close()
-    
-def save_unified_mask(mask: np.ndarray, ellipses: tuple, filename: str):
-    """Save a mask to a file.
-
-    Args:
-        mask (np.ndarray): mask as a numpy array. 0 values are considered background.
-        filename (str): mask filename.
-    """
-    mask_path = './data/masks'
-    if not os.path.exists(mask_path):
-        os.makedirs(mask_path)
-        
-    # Prepare mask for saving
-    out_mask = (mask * 255 / max(mask.flatten())).astype(np.uint8)
-    # Make it RGB
-    out_mask = cv2.merge([out_mask, out_mask, out_mask])
-    cv2.ellipse(out_mask, ellipses[0], [0, 0, 255], 1)
-    cv2.ellipse(out_mask, ellipses[1], [0, 255, 0], 1)
-    
-    cv2.imwrite(mask_path + '/' + filename, out_mask)
-
-def save_results_to_csv(info:dict):
-    df = pd.DataFrame(info, index=[0])
-    if not os.path.exists('results.csv'):
-        df.to_csv('results.csv', index=False)
-    else:
-        df.to_csv('results.csv', mode='a', header=False, index=False)
-
-def generate_masks(img: Image) -> dict:
-    """Generate masks for the disc, cup and fovea.
-
-    Args:
-        img (Image): input image as a PIL Image object.
-
-    Returns:
-        dict: dictionary containing the masks for the disc, cup and fovea.
-    """
-    # Convert image to tensor for processing
-    transform_disc = Compose([Resize((512, 512)), ToTensor(), Normalize((0.5,), (0.5,))])
-    transform_fovea = Compose([Resize((224, 224)), ToTensor()])
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    img4fovea= transform_fovea(img).to(device)
-    img4disc_cup = transform_disc(img).to(device)
-    
-    # Process image
-    mask_d = mask_disc(img4disc_cup)
-    mask_c = mask_cup(img4disc_cup)
-    mask_f = mask_fovea(img4fovea)
-    
-    # Prepare output
-    keys = ['disc', 'cup', 'fovea']
-    values = [mask_d, mask_c, mask_f]
-    output = {k: v.to(torch.uint8).cpu().numpy() if sum(v.flatten() != 0) else None for k, v in zip(keys, values)}
-    
-    return output
-
-def clean_segmentations(masks: dict) -> dict:
-    """Clean segmentations by removing small areas and keeping the roundest one.
-
-    Args:
-        masks (dict): dictionary containing the masks for the disc, cup and fovea.
-
-    Returns:
-        dict: dictionary containing the cleaned masks for the disc, cup and fovea.
-    """
-    # Initialize dictionary to store cleaned masks
-    cleaned_masks = {}
-    
-    for key, mask in masks.items():
-        
-        # Open and close operations to remove small areas
-        cleaned_mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
-        cleaned_mask = cv2.morphologyEx(cleaned_mask, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
-        
-        # Label and compute roundness
-        cleaned_mask_labelled = label(cleaned_mask)
-        props = regionprops_table(cleaned_mask_labelled, properties=('area', 'perimeter'))
-        radii = props.get('perimeter') / (2 * np.pi) + 0.5
-        roundness = roundness = [(4 * np.pi * props.get('area')[idx] / (props.get('perimeter')[idx] ** 2)) * (1 - 0.5 * r)**2 
-                                if props.get('perimeter')[idx] != 0 else 0.0 for idx, r in enumerate(radii)]
-        
-        if len(roundness) != 0:
-            # Remove areas smaller than 50 px
-            roundness = np.array(roundness)
-            roundness[props.get('area') < 50] = 0
-            # Keep the roundest area
-            idx = np.argmax(roundness)
-            cleaned_mask = (cleaned_mask_labelled == idx + 1)
-            
-        # Store cleaned mask in dictionary
-        cleaned_masks[key] = cleaned_mask.astype(np.uint8)
-        
-    return cleaned_masks
-
-def merge_masks(masks: dict) -> np.ndarray:
-    """Merge binary masks into a single mask.
-
-    Args:
-        masks (dict): dictionary containing the masks to be merged. All masks must have the same shape. 0 values are considered background.
-
-    Returns:
-        np.ndarray: unified mask.
-    """
-    unified_mask = np.zeros_like(next(iter(masks.values()))).astype(float)
-    for idx, mask in enumerate(masks.values()):
-        unified_mask[mask.astype(bool)] = idx + 1
-    return unified_mask
-
 def level_image(img:Image, mask_f:np.ndarray=None, mask_d:np.ndarray=None) -> np.ndarray:
     """
     Rotate a fundus image to make the line connecting the fovea and the disc horizontal.
@@ -372,4 +216,5 @@ def cdr_profile(mask:np.ndarray, ang_step:int=15) -> list:
     return out
 
 if __name__ == '__main__':
-    process_images_in_directory('data')
+    data_path = '/home/borja/OneDrive/Postdoc/Datasets/SMDG/full-fundus'
+    process_images_in_directory(data_path)
