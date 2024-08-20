@@ -217,5 +217,5 @@ def cdr_profile(mask:np.ndarray, ang_step:int=15) -> list:
     return out
 
 if __name__ == '__main__':
-    data_path = 'data' # '/home/borja/OneDrive/Postdoc/Datasets/SMDG/full-fundus'
+    data_path = '/home/borja/OneDrive/Postdoc/Datasets/GRAPE/CFPs' # 'data' # '/home/borja/OneDrive/Postdoc/Datasets/SMDG/full-fundus'
     process_images_in_directory(data_path)
