@@ -20,7 +20,7 @@ def process_images_in_directory(directory: str):
     file_list.sort()
     n = len(file_list)
     for i, filename in enumerate(file_list):
-        if filename.endswith(".jpg") or filename.endswith(".png"):
+        if filename.endswith(".jpg") or filename.endswith(".png") or filename.endswith(".bmp"):
             print(f"({i + 1}/{n}) Processing {filename}")
             img_path = os.path.join(directory, filename)
             img = Image.open(img_path)
@@ -217,5 +217,5 @@ def cdr_profile(mask:np.ndarray, ang_step:int=15) -> list:
     return out
 
 if __name__ == '__main__':
-    data_path = '/home/borja/OneDrive/Postdoc/Datasets/GRAPE/CFPs' # 'data' # '/home/borja/OneDrive/Postdoc/Datasets/SMDG/full-fundus'
+    data_path = '/media/borja/Seagate Expansion Drive/Rosetrees/Fundus2' # 'data' # '/home/borja/OneDrive/Postdoc/Datasets/SMDG/full-fundus'
     process_images_in_directory(data_path)
