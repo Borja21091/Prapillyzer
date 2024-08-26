@@ -20,7 +20,7 @@ def process_images_in_directory(directory: str):
     file_list.sort()
     n = len(file_list)
     for i, filename in enumerate(file_list):
-        if filename.endswith(".jpg") or filename.endswith(".png") or filename.endswith(".bmp"):
+        if filename.endswith(['.jpg', '.jpeg', '.png', '.bmp', '.tiff']):
             print(f"({i + 1}/{n}) Processing {filename}")
             img_path = os.path.join(directory, filename)
             img = Image.open(img_path)
