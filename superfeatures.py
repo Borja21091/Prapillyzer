@@ -20,7 +20,7 @@ def process_images_in_directory(directory: str):
     file_list.sort()
     n = len(file_list)
     for i, filename in enumerate(file_list):
-        if filename.endswith(['.jpg', '.jpeg', '.png', '.bmp', '.tiff']):
+        if filename.endswith(('.jpg', '.jpeg', '.png', '.bmp', '.tiff')):
             print(f"({i + 1}/{n}) Processing {filename}")
             img_path = os.path.join(directory, filename)
             img = Image.open(img_path)
@@ -82,11 +82,18 @@ def process_image(img: Image, filename: str):
         cdr = np.vstack((angle, pcdr))
     else:
         info.update({'eye': 'R'})
+        
+    # Calculate disc size (area of disc ellipse) / disc-fovea distance
+    disc_size = np.pi * ellipses[1][1][0] * ellipses[1][1][1]
+    disc_fovea_dist = np.linalg.norm(np.array(fov_coord) - np.array(disc_coord))
+    norm_disc_size = disc_size / disc_fovea_dist
     
     # Update dictionary with results and save to CSV
     info.update({'fovea_x': fov_coord[0], 'fovea_y': fov_coord[1],
                  'disc_x': disc_coord[0], 'disc_y': disc_coord[1],
                  'cup_x': cup_coord[0], 'cup_y': cup_coord[1],
+                 'disc_size (px^2)': disc_size, 'disc_fovea_dist (px)': disc_fovea_dist,
+                 'norm_disc_size (px)': norm_disc_size,
                  'rotation_angle': ang*180/np.pi})
     info.update({f'pcdr_{angle:d}': v for angle, v in zip(cdr[0,:].astype(int), cdr[1,:])})
     save_results_to_csv(info)
@@ -217,5 +224,5 @@ def cdr_profile(mask:np.ndarray, ang_step:int=15) -> list:
     return out
 
 if __name__ == '__main__':
-    data_path = '/media/borja/Seagate Expansion Drive/Rosetrees/Fundus2' # 'data' # '/home/borja/OneDrive/Postdoc/Datasets/SMDG/full-fundus'
+    data_path = '/home/borja/OneDrive/Postdoc/Datasets/SMDG/full-fundus' # 'data' # '/media/borja/Seagate Expansion Drive/Rosetrees/Fundus2'
     process_images_in_directory(data_path)
