@@ -1,12 +1,37 @@
 import os
 import cv2
+import torch
 import numpy as np
 import pandas as pd
+from PIL import Image
 from loguru import logger
+from definitions import *
+from src.masking import mask_part
 from matplotlib import pyplot as plt
+from src.geom import get_centroid, get_rotation
+from torchvision.transforms import Compose, Resize, ToTensor, Normalize
+
+####### LOADING AND SAVING FUNCTIONS #######
 
 def init_results_csv():
+    """
+    Initializes a results.csv file for storing results of a specific analysis.
     
+    This function performs the following steps:
+    
+        1. Deletes the existing results.csv file if it exists.
+        2. Creates a new results.csv file.
+        3. Writes the header row to the file, specifying the column names.
+        4. Logs a success message indicating that the CSV file has been created.
+    
+    Note:
+    
+        - The file is created in the current working directory.
+        - If the results.csv file already exists, it will be deleted before creating a new one.
+        
+    Example usage:
+    >>> init_results_csv()
+    """
     # Delete results.csv if it exists
     if os.path.exists('results.csv'):
         logger.trace("Deleting existing results.csv file.")
@@ -20,6 +45,108 @@ def init_results_csv():
         f.write(','.join([f'pcdr_{angle:d}' for angle in range(0, 180, 5)]) + ',\n')
         
     logger.success("CSV file results.csv created.")
+
+def save_pcdr_plot(cdr: list, filename: str):
+    """
+    Save a plot of the cup-to-disc ratio profile.
+    
+    Parameters:
+    ----------
+    
+        cdr (list): A list containing the cup-to-disc ratio data.
+        filename (str): The name of the file to save the plot.
+        
+    Returns:
+    -------
+    
+        None
+    """
+    
+    # Plot results
+    plt.figure(figsize=(10, 5))
+    plt.plot(cdr[0,:], cdr[1,:], 'k--', linewidth=0.5)
+    plt.scatter(cdr[0,:], cdr[1,:], s=3, c='k')
+    plt.xlabel('Angle (degrees)')
+    plt.ylabel('Cup-to-disc ratio')
+    plt.title('Cup-to-disc ratio profile')
+    plt.ylim([0, 1])
+    plt.grid()
+    # Overlay N S T I N labels on top of the X axis
+    angle = [0, 90, 180, 270, 360]
+    quadrant = ['N', 'S', 'T', 'I', 'N']
+    for a, q in zip(angle, quadrant):
+        plt.text(a, 0.025, q, fontsize=20, color='k', fontweight='bold')
+        
+    # Save plot
+    plot_path = './data/pcdr_plots'
+    if not os.path.exists(plot_path):
+        os.makedirs(plot_path)
+    plt.savefig(plot_path + '/' + filename.split('.')[0] + '.png')
+    plt.close()
+    
+def save_unified_mask(mask: np.ndarray, ellipses: tuple, filename: str):
+    """
+    Save the unified mask with ellipses to a file.
+    
+    Parameters:
+    ----------
+    
+        mask (np.ndarray): The mask to be saved.
+        ellipses (tuple): A tuple containing two ellipses to be drawn on the mask.
+        filename (str): The name of the file to save the mask.
+        
+    Returns:
+    -------
+    
+        None
+    """
+    mask_path = MASK_DIR
+    if not os.path.exists(mask_path):
+        os.makedirs(mask_path)
+        
+    # Prepare mask for saving
+    out_mask = (mask * 255 / max(mask.flatten())).astype(np.uint8)
+    # Make it RGB
+    out_mask = cv2.merge([out_mask, out_mask, out_mask])
+    cv2.ellipse(out_mask, ellipses[0], [0, 0, 255], 1)
+    cv2.ellipse(out_mask, ellipses[1], [0, 255, 0], 1)
+    
+    cv2.imwrite(mask_path + '/' + filename, out_mask)
+
+def save_results_to_csv(info: dict):
+    """
+    Save the given information to a CSV file.
+
+    Parameters:
+    ----------
+    
+        info (dict): A dictionary containing the information to be saved.
+
+    Returns:
+    -------
+    
+        None
+    """
+    df = pd.DataFrame(info, index=[0])
+    if not os.path.exists('results.csv'):
+        df.to_csv('results.csv', index=False)
+    else:
+        df.to_csv('results.csv', mode='a', header=False, index=False)
+
+####### HELPER FUNCTIONS #######
+
+def convert_to_tensor(img: Image, transform: Compose, device: torch.device) -> torch.Tensor:
+    """Convert an image to a tensor and move it to the specified device."""
+    return transform(img).to(device)
+
+def scale_coordinates(coord: tuple, img_shape: tuple, mask_shape: tuple) -> tuple:
+    """Scale coordinates from mask size to original image size."""
+    x, y = coord
+    x *= img_shape[1] / mask_shape[1]
+    y *= img_shape[0] / mask_shape[0]
+    return x, y
+
+####### PLOTTING FUNCTIONS #######
 
 def plot_levelled_image(img: np.ndarray, centre: tuple, intersections: tuple, ellipses: list, filename: str):
     
@@ -55,167 +182,57 @@ def plot_levelled_image(img: np.ndarray, centre: tuple, intersections: tuple, el
     
     plt.show()
 
-def save_pcdr_plot(cdr: list, filename: str):
-    
-    # Plot results
-    plt.figure(figsize=(10, 5))
-    plt.plot(cdr[0,:], cdr[1,:], 'k--', linewidth=0.5)
-    plt.scatter(cdr[0,:], cdr[1,:], s=3, c='k')
-    plt.xlabel('Angle (degrees)')
-    plt.ylabel('Cup-to-disc ratio')
-    plt.title('Cup-to-disc ratio profile')
-    plt.ylim([0, 1])
-    plt.grid()
-    # Overlay N S T I N labels on top of the X axis
-    angle = [0, 90, 180, 270, 360]
-    quadrant = ['N', 'S', 'T', 'I', 'N']
-    for a, q in zip(angle, quadrant):
-        plt.text(a, 0.025, q, fontsize=20, color='k', fontweight='bold')
-        
-    # Save plot
-    plot_path = './data/pcdr_plots'
-    if not os.path.exists(plot_path):
-        os.makedirs(plot_path)
-    plt.savefig(plot_path + '/' + filename.split('.')[0] + '.png')
-    plt.close()
-    
-def save_unified_mask(mask: np.ndarray, ellipses: tuple, filename: str):
-    """Save a mask to a file.
+####### IMAGE PROCESSING #######
 
-    Args:
-        mask (np.ndarray): mask as a numpy array. 0 values are considered background.
-        filename (str): mask filename.
+def level_image(img:Image, mask_f:np.ndarray=None, mask_d:np.ndarray=None) -> np.ndarray:
     """
-    mask_path = './data/masks'
-    if not os.path.exists(mask_path):
-        os.makedirs(mask_path)
-        
-    # Prepare mask for saving
-    out_mask = (mask * 255 / max(mask.flatten())).astype(np.uint8)
-    # Make it RGB
-    out_mask = cv2.merge([out_mask, out_mask, out_mask])
-    cv2.ellipse(out_mask, ellipses[0], [0, 0, 255], 1)
-    cv2.ellipse(out_mask, ellipses[1], [0, 255, 0], 1)
-    
-    cv2.imwrite(mask_path + '/' + filename, out_mask)
-
-def save_results_to_csv(info:dict):
-    df = pd.DataFrame(info, index=[0])
-    if not os.path.exists('results.csv'):
-        df.to_csv('results.csv', index=False)
-    else:
-        df.to_csv('results.csv', mode='a', header=False, index=False)
-
-def intersection_line_ellipse(m, n, ellipse, x0, y0):
-    
-    A, B, C, D, E, F = implicit_ellipse(ellipse)
-    
-    # Intersection points
-    a = A + m*(B + m*C)
-    b = D + m*(2*C*n + E) + B*n
-    c = n*(C*n + E) + F
-    delta = b**2 - 4*a*c
-    x = np.array([(-b + np.sqrt(delta)) / (2*a), (-b - np.sqrt(delta)) / (2*a)])
-    x = x.reshape(-1, 1) # Reshape to column vector
-    y = np.tile(m,2).reshape(-1,1)*x + np.tile(n,2).reshape(-1,1)
-    
-    # Angle subdivision
-    ang_step = 360 / len(y)
-    
-    # Find index of vertical intersections (90, 270 degrees)
-    idx = (np.array([90, 270]) / ang_step).astype(int)
-    
-    # Handle vertical intersections
-    y_ = np.roots([C, B*x0 + E, A*x0**2 + D*x0 + F])
-    y_ = np.sort(y_, axis=0)[::-1].reshape(-1,1) # Sort in descending order
-    
-    # Replace with vertical intersections
-    x[idx,0] = x0
-    y[idx] = y_
-    
-    # Prepare output
-    out = np.array([x.flatten(), y.flatten()])
-    # Sort circularly from 0 to 360 degrees
-    ang = np.arctan2(out[1,:] - y0, out[0,:] - x0) % (2*np.pi)
-    idx = np.argsort(ang)[::-1]
-    out = out[:,idx]
-    
-    return out
-    
-def implicit_ellipse(ellipse):
-    
-    x0, y0 = ellipse[0]
-    a, b = tuple(ti/2 for ti in ellipse[1])
-    theta = np.deg2rad(ellipse[2])
-    
-    A = a**2*np.sin(theta)**2 + b**2*np.cos(theta)**2
-    B = 2*(b**2 - a**2)*np.sin(theta)*np.cos(theta)
-    C = a**2*np.cos(theta)**2 + b**2*np.sin(theta)**2
-    D = -2*A*x0 - B*y0
-    E = -B*x0 - 2*C*y0
-    F = A*x0**2 + B*x0*y0 + C*y0**2 - a**2*b**2
-    
-    return A, B, C, D, E, F
-
-def is_ellipse_contained(inner:cv2.RotatedRect, outter:cv2.RotatedRect) -> bool:
-    
-    # Templates of zeros (512 x 512)
-    _cup = np.zeros((512, 512), np.uint8)
-    _disc = np.zeros((512, 512), np.uint8)
-    
-    # Draw ellipses
-    cv2.ellipse(_cup, inner, 1, -1)
-    cv2.ellipse(_disc, outter, 1, -1)
-    
-    # Logical AND
-    _and = np.logical_and(_cup, _disc)
-    
-    # Check if cup == cup AND disc
-    return np.array_equal(_cup, _and)
-    
-def get_centroid(mask:np.ndarray)->tuple:
-    """
-    Compute the centroid of a binary mask.
+    Rotate a fundus image to make the line connecting the fovea and the disc horizontal.
     
     Parameters
     ----------
-    mask : np.ndarray
-        Binary mask as a np.ndarray object.
-        
+        img (np.ndarray): RGB fundus image.
+    
     Returns
     -------
-    tuple
-        Tuple containing the centroid coordinates (x, y).
-    """    
-    # Compute centroid
-    x_centroid = np.sum(np.argwhere(mask)[:,1]) / np.sum(mask)
-    y_centroid = np.sum(np.argwhere(mask)[:,0]) / np.sum(mask)
+        np.ndarray: Straightened RGB fundus image.
+    """
+    # Set device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    return x_centroid, y_centroid
+    # Convert image to tensor
+    transform_disc = Compose([Resize((512, 512)), ToTensor(), Normalize((0.5,), (0.5,))])
+    transform_fovea = Compose([Resize((224, 224)), ToTensor()])
+    
+    # Convert to tensors
+    img4fovea = convert_to_tensor(img, transform_fovea, device)
+    img4disc = convert_to_tensor(img, transform_disc, device)
+    
+    # Mask fovea and disc
+    if mask_f is None:
+        _, mask_f = mask_part(img4fovea, os.path.join(MODELS_DIR, 'fovea.pth'), expected_size=(224, 224))
+        mask_f = mask_f.cpu().numpy()
 
-def get_rotation(centroid_fovea:tuple, centroid_disc:tuple, radians:bool=True)->float:
-    """
-    Calculate rotation angle between two points.
-
-    Args:
-        centroid_fovea (tuple): (x, y) coordinates of the fovea centroid.
-        centroid_disc (tuple): (x, y) coordinates of the disc centroid.
-        radians (bool, optional): Radians/Degrees of output. Defaults to radians.
-        
-    Returns:
-        float: Rotation angle in radians or degrees.
-    """
+    if mask_d is None:
+        mask_d = mask_part(img4disc, os.path.join(MODELS_DIR, 'disc.pth'))
+        mask_d = mask_d.cpu().numpy()
+    
+    # Compute centroids
+    x_f, y_f = get_centroid(mask_f)
+    x_d, y_d = get_centroid(mask_d)
+    
+    # Scale to original image size
+    x_f, y_f = scale_coordinates((x_f, y_f), np.array(img).shape, mask_f.shape)
+    x_d, y_d = scale_coordinates((x_d, y_d), np.array(img).shape, mask_d.shape)
+    
     # Compute rotation angle
-    # rotation = np.arctan2(centroid_disc[1] - centroid_fovea[1], centroid_disc[0] - centroid_fovea[0])
-    rotation = np.arctan((centroid_disc[1] - centroid_fovea[1]) / (centroid_disc[0] - centroid_fovea[0]))
+    ang = get_rotation((x_f, y_f), (x_d, y_d), radians=True) # Radians
     
-    # Convert to degrees
-    if not radians:
-        rotation = np.rad2deg(rotation)
+    # Rotate image
+    out_img = rotate_image(ang, np.array(img))
     
-    return rotation
+    return out_img, (x_f, y_f), (x_d, y_d), ang
 
-def rotate_image(ang:float, img:np.ndarray)->np.ndarray:
+def rotate_image(ang:float, img:np.ndarray) -> np.ndarray:
     """
     Rotate an image by a given angle.
     
