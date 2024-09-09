@@ -5,7 +5,7 @@ from PIL import Image
 from definitions import *
 from loguru import logger
 from src.geom import get_centroid
-from src.utils import save_results_to_csv, level_image, rotate_image
+from src.utils import save_results_to_csv, level_image, rotate_image, init_results_csv
 from src.masking import DeepLabV3MobileNetV2, cdr_profile, generate_masks, merge_masks, clean_segmentations
 
 def process_images_in_directory(directory: str):
