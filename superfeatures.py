@@ -2,29 +2,34 @@ import os
 import cv2
 import torch
 import numpy as np
+from tqdm import tqdm
 from PIL import Image
 from src.utils import *
+from definitions import *
+from loguru import logger
 import scipy.spatial.distance as distance
 from src.masking import DeepLabV3MobileNetV2
 from src.masking import mask_fovea, mask_disc
 from torchvision.transforms import Compose, Resize, ToTensor, Normalize
+from src.masking import generate_masks, merge_masks, clean_segmentations
 
 def process_images_in_directory(directory: str):
     
-    # Delete results.csv if it exists
-    if os.path.exists('results.csv'):
-        os.remove('results.csv')
+    # Set up results CSV file
+    init_results_csv()
         
     # Process images in directory
     file_list = os.listdir(directory)
     file_list.sort()
     n = len(file_list)
-    for i, filename in enumerate(file_list):
+    for i, filename in tqdm(enumerate(file_list)):
         if filename.endswith(('.jpg', '.jpeg', '.png', '.bmp', '.tiff')):
-            print(f"({i + 1}/{n}) Processing {filename}")
+            logger.debug(f"({i + 1}/{n}) Processing {filename}")
             img_path = os.path.join(directory, filename)
             img = Image.open(img_path)
             process_image(img, filename)
+        else:
+            logger.warning(f"Skipping {filename}. File extension not supported.")
 
 def process_image(img: Image, filename: str):
     """Process an image and save the results to a CSV file.
@@ -49,7 +54,7 @@ def process_image(img: Image, filename: str):
     # Clean segmentations
     cleaned_masks = clean_segmentations(masks)
     
-    # Generate unified mask and save it
+    # Generate unified mask
     unified_mask = merge_masks(cleaned_masks)
     
     # Level image and mask
@@ -224,5 +229,12 @@ def cdr_profile(mask:np.ndarray, ang_step:int=15) -> list:
     return out
 
 if __name__ == '__main__':
-    data_path = '/home/borja/OneDrive/Postdoc/Datasets/SMDG/full-fundus' # 'data' # '/media/borja/Seagate Expansion Drive/Rosetrees/Fundus2'
+    
+    # Set data path
+    dataset = 'SMDG'
+    data_path = f'/home/borja/OneDrive/Postdoc/Datasets/{dataset}/full-fundus' # 'data' # '/media/borja/Seagate Expansion Drive/Rosetrees/Fundus2'
+    
+    # Log to file
+    logger.add(os.path.join(LOG_DIR, f'pCDR_{dataset}' + '_{time}.log'))
+    
     process_images_in_directory(data_path)

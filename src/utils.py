@@ -1,13 +1,25 @@
 import os
 import cv2
-import torch
 import numpy as np
 import pandas as pd
-from PIL import Image
-from src.masking import *
+from loguru import logger
 from matplotlib import pyplot as plt
-from skimage.measure import label, regionprops_table
-from torchvision.transforms import Compose, Resize, ToTensor, Normalize
+
+def init_results_csv():
+    
+    # Delete results.csv if it exists
+    if os.path.exists('results.csv'):
+        logger.trace("Deleting existing results.csv file.")
+        os.remove('results.csv')
+    
+    # Iintialize CSV file
+    with open('results.csv', 'x') as f:
+        f.write('filename,masks,pcdr,eye,fovea_x,fovea_y,disc_x,disc_y,cup_x,cup_y,')
+        f.write('d_discfov,disc_size,cup_size,norm_disc_size,norm_cup_size,rotation_angle,')
+        f.write('vCDR,hCDR,')
+        f.write(','.join([f'pcdr_{angle:d}' for angle in range(0, 180, 5)]) + ',\n')
+        
+    logger.success("CSV file results.csv created.")
 
 def plot_levelled_image(img: np.ndarray, centre: tuple, intersections: tuple, ellipses: list, filename: str):
     
@@ -94,92 +106,6 @@ def save_results_to_csv(info:dict):
     else:
         df.to_csv('results.csv', mode='a', header=False, index=False)
 
-def generate_masks(img: Image) -> dict:
-    """Generate masks for the disc, cup and fovea.
-
-    Args:
-        img (Image): input image as a PIL Image object.
-
-    Returns:
-        dict: dictionary containing the masks for the disc, cup and fovea.
-    """
-    # Convert image to tensor for processing
-    transform_disc = Compose([Resize((512, 512)), ToTensor(), Normalize((0.5,), (0.5,))])
-    transform_fovea = Compose([Resize((224, 224)), ToTensor()])
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    img4fovea= transform_fovea(img).to(device)
-    img4disc_cup = transform_disc(img).to(device)
-    
-    # Process image
-    mask_d = mask_disc(img4disc_cup)
-    mask_c = mask_cup(img4disc_cup)
-    mask_f = mask_fovea(img4fovea)
-    
-    # Prepare output
-    keys = ['disc', 'cup', 'fovea']
-    values = [mask_d, mask_c, mask_f]
-    output = {}
-    
-    for k, v in zip(keys, values):
-        if torch.any(v):
-            output[k] = v.to(torch.uint8).cpu().numpy()
-        else:
-            output[k] = None
-            
-    return output
-
-def clean_segmentations(masks: dict) -> dict:
-    """Clean segmentations by removing small areas and keeping the roundest one.
-
-    Args:
-        masks (dict): dictionary containing the masks for the disc, cup and fovea.
-
-    Returns:
-        dict: dictionary containing the cleaned masks for the disc, cup and fovea.
-    """
-    # Initialize dictionary to store cleaned masks
-    cleaned_masks = {}
-    
-    for key, mask in masks.items():
-        
-        # Open and close operations to remove small areas
-        cleaned_mask1 = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((15, 15), np.uint8))
-        cleaned_mask = cv2.morphologyEx(cleaned_mask1, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
-        
-        # Label and compute roundness
-        cleaned_mask_labelled = label(cleaned_mask)
-        props = regionprops_table(cleaned_mask_labelled, properties=('area', 'perimeter'))
-        radii = props.get('perimeter') / (2 * np.pi) + 0.5
-        roundness = roundness = [(4 * np.pi * props.get('area')[idx] / (props.get('perimeter')[idx] ** 2)) * (1 - 0.5 * r)**2 
-                                if props.get('perimeter')[idx] != 0 else 0.0 for idx, r in enumerate(radii)]
-        
-        if len(roundness) != 0:
-            # Remove areas smaller than 50 px
-            roundness = np.array(roundness)
-            roundness[props.get('area') < 50] = 0
-            # Keep the roundest area
-            idx = np.argmax(roundness)
-            cleaned_mask = (cleaned_mask_labelled == idx + 1)
-            
-        # Store cleaned mask in dictionary
-        cleaned_masks[key] = cleaned_mask.astype(np.uint8)
-        
-    return cleaned_masks
-
-def merge_masks(masks: dict) -> np.ndarray:
-    """Merge binary masks into a single mask.
-
-    Args:
-        masks (dict): dictionary containing the masks to be merged. All masks must have the same shape. 0 values are considered background.
-
-    Returns:
-        np.ndarray: unified mask.
-    """
-    unified_mask = np.zeros_like(next(iter(masks.values()))).astype(float)
-    for idx, mask in enumerate(masks.values()):
-        unified_mask[mask.astype(bool)] = idx + 1
-    return unified_mask
-   
 def intersection_line_ellipse(m, n, ellipse, x0, y0):
     
     A, B, C, D, E, F = implicit_ellipse(ellipse)
