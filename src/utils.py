@@ -184,18 +184,28 @@ def plot_levelled_image(img: np.ndarray, centre: tuple, intersections: tuple, el
 
 ####### IMAGE PROCESSING #######
 
-def level_image(img:Image, mask_f:np.ndarray=None, mask_d:np.ndarray=None) -> np.ndarray:
+
+def level_image(img:Image, mask_f:np.ndarray=None, mask_d:np.ndarray=None) -> tuple[np.ndarray, tuple[int, int], tuple[int, int], float]:
     """
     Rotate a fundus image to make the line connecting the fovea and the disc horizontal.
     
     Parameters
     ----------
-        img (np.ndarray): RGB fundus image.
     
-    Returns
+        img (Image): The input image.
+        mask_f (np.ndarray, optional): The mask for the fovea. Defaults to None.
+        mask_d (np.ndarray, optional): The mask for the disc. Defaults to None.
+        
+    Returns:
     -------
-        np.ndarray: Straightened RGB fundus image.
+    
+        tuple[np.ndarray, tuple[int, int], tuple[int, int], float]:
+            - Processed image
+            - Centroid coordinates for the fovea
+            - Centroid coordinates for the disc
+            - Rotation angle in radians.
     """
+    
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
