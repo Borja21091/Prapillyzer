@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from superfeatures import cdr_profile
+from main import cdr_profile
 
 class TestCdrProfile(unittest.TestCase):
 

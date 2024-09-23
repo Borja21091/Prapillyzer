@@ -184,7 +184,64 @@ def plot_levelled_image(img: np.ndarray, centre: tuple, intersections: tuple, el
 
 ####### IMAGE PROCESSING #######
 
-def level_image(img:Image, mask_f:np.ndarray=None, mask_d:np.ndarray=None) -> tuple[np.ndarray, tuple[int, int], tuple[int, int], float]:
+# def level_image(img:Image, mask_f:np.ndarray=None, mask_d:np.ndarray=None) -> tuple[np.ndarray, tuple[int, int], tuple[int, int], float]:
+#     """
+#     Rotate a fundus image to make the line connecting the fovea and the disc horizontal.
+    
+#     Parameters
+#     ----------
+    
+#         img (Image): The input image.
+#         mask_f (np.ndarray, optional): The mask for the fovea. Defaults to None.
+#         mask_d (np.ndarray, optional): The mask for the disc. Defaults to None.
+        
+#     Returns:
+#     -------
+    
+#         tuple[np.ndarray, tuple[int, int], tuple[int, int], float]:
+#             - Processed image
+#             - Centroid coordinates for the fovea
+#             - Centroid coordinates for the disc
+#             - Rotation angle in radians.
+#     """
+    
+#     # Set device
+#     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+#     # Convert image to tensor
+#     transform_disc = Compose([Resize((512, 512)), ToTensor(), Normalize((0.5,), (0.5,))])
+#     transform_fovea = Compose([Resize((224, 224)), ToTensor()])
+    
+#     # Convert to tensors
+#     img4fovea = convert_to_tensor(img, transform_fovea, device)
+#     img4disc = convert_to_tensor(img, transform_disc, device)
+    
+#     # Mask fovea and disc
+#     if mask_f is None:
+#         _, mask_f = mask_part(img4fovea, os.path.join(MODELS_DIR, 'fovea.pth'), expected_size=(224, 224))
+#         mask_f = mask_f.cpu().numpy()
+
+#     if mask_d is None:
+#         mask_d = mask_part(img4disc, os.path.join(MODELS_DIR, 'disc.pth'))
+#         mask_d = mask_d.cpu().numpy()
+    
+#     # Compute centroids
+#     x_f, y_f = get_centroid(mask_f)
+#     x_d, y_d = get_centroid(mask_d)
+    
+#     # Scale to original image size
+#     x_f, y_f = scale_coordinates((x_f, y_f), np.array(img).shape, mask_f.shape)
+#     x_d, y_d = scale_coordinates((x_d, y_d), np.array(img).shape, mask_d.shape)
+    
+#     # Compute rotation angle
+#     ang = get_rotation((x_f, y_f), (x_d, y_d), radians=True) # Radians
+    
+#     # Rotate image
+#     out_img = rotate_image(ang, np.array(img))
+    
+#     return out_img, (x_f, y_f), (x_d, y_d), ang
+
+def level_image(img:Image, mask:np.ndarray=None) -> tuple[np.ndarray, tuple[int, int], tuple[int, int], float]:
     """
     Rotate a fundus image to make the line connecting the fovea and the disc horizontal.
     
@@ -192,8 +249,7 @@ def level_image(img:Image, mask_f:np.ndarray=None, mask_d:np.ndarray=None) -> tu
     ----------
     
         img (Image): The input image.
-        mask_f (np.ndarray, optional): The mask for the fovea. Defaults to None.
-        mask_d (np.ndarray, optional): The mask for the disc. Defaults to None.
+        mask (np.ndarray): Unified mask of disc, cup and fovea.
         
     Returns:
     -------
@@ -205,25 +261,9 @@ def level_image(img:Image, mask_f:np.ndarray=None, mask_d:np.ndarray=None) -> tu
             - Rotation angle in radians.
     """
     
-    # Set device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
-    # Convert image to tensor
-    transform_disc = Compose([Resize((512, 512)), ToTensor(), Normalize((0.5,), (0.5,))])
-    transform_fovea = Compose([Resize((224, 224)), ToTensor()])
-    
-    # Convert to tensors
-    img4fovea = convert_to_tensor(img, transform_fovea, device)
-    img4disc = convert_to_tensor(img, transform_disc, device)
-    
-    # Mask fovea and disc
-    if mask_f is None:
-        _, mask_f = mask_part(img4fovea, os.path.join(MODELS_DIR, 'fovea.pth'), expected_size=(224, 224))
-        mask_f = mask_f.cpu().numpy()
-
-    if mask_d is None:
-        mask_d = mask_part(img4disc, os.path.join(MODELS_DIR, 'disc.pth'))
-        mask_d = mask_d.cpu().numpy()
+    # Extract masks from unified mask
+    mask_f = mask[:,:,-1]
+    mask_d = mask[:,:,0]
     
     # Compute centroids
     x_f, y_f = get_centroid(mask_f)
@@ -241,9 +281,14 @@ def level_image(img:Image, mask_f:np.ndarray=None, mask_d:np.ndarray=None) -> tu
     
     return out_img, (x_f, y_f), (x_d, y_d), ang
 
-def rotate_image(ang:float, img:np.ndarray) -> np.ndarray:
+def rotate_2d_image(image: np.ndarray, angle: float) -> np.ndarray:
+    """Rotate a 2D image by a given angle."""
+    rot_matrix = cv2.getRotationMatrix2D((image.shape[1] // 2, image.shape[0] // 2), np.rad2deg(angle), 1)
+    return cv2.warpAffine(image, rot_matrix, (image.shape[1], image.shape[0]))
+
+def rotate_image(ang: float, img: np.ndarray) -> np.ndarray:
     """
-    Rotate an image by a given angle.
+    Rotate a 2D or 3D image by a given angle.
     
     Parameters
     ----------
@@ -258,11 +303,10 @@ def rotate_image(ang:float, img:np.ndarray) -> np.ndarray:
     np.ndarray
         Rotated image.
     """
-    
-    # Rotation matrix
-    rot_matrix = cv2.getRotationMatrix2D((img.shape[1]//2, img.shape[0]//2), np.rad2deg(ang), 1)
-    
-    # Rotate image 'ang' radians
-    img = cv2.warpAffine(img, rot_matrix, (img.shape[1], img.shape[0]))
-    
-    return img
+    if img.ndim == 2:
+        return rotate_2d_image(img, ang)
+    elif img.ndim >= 3:
+        rotated_slices = [rotate_2d_image(img[:, :, i], ang) for i in range(img.shape[2])]
+        return np.stack(rotated_slices, axis=2)
+    else:
+        raise ValueError("Input image must be at least 2D.")

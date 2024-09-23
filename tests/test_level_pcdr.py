@@ -1,5 +1,5 @@
 from src.masking import DeepLabV3MobileNetV2
-from superfeatures import level_image, cdr_profile
+from main import level_image, cdr_profile
 from src.utils import rotate_image
 import matplotlib.pyplot as plt
 from PIL import Image

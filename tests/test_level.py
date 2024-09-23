@@ -2,7 +2,7 @@ import unittest
 import numpy as np
 from PIL import Image
 from unittest.mock import patch
-from superfeatures import level_image
+from main import level_image
 
 class TestLevelImage(unittest.TestCase):
 

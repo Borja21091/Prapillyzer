@@ -7,10 +7,10 @@ ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(ROOT_DIR, 'data')
 
 # Mask directory
-MASK_DIR = os.path.join(ROOT_DIR, 'mask')
+MASK_DIR = os.path.join(ROOT_DIR, 'masks')
 
 # Models directory
 MODELS_DIR = os.path.join(ROOT_DIR, 'src', 'models')
 
 # Log directory
-LOG_DIR = os.path.join(ROOT_DIR, 'log')
+LOG_DIR = os.path.join(ROOT_DIR, 'logs')

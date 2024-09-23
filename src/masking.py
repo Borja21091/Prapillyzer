@@ -13,6 +13,8 @@ from torchvision.models.segmentation.deeplabv3 import DeepLabHead
 from src.geom import is_ellipse_contained, intersection_line_ellipse
 from torchvision.transforms import Compose, Resize, ToTensor, Normalize
 
+from matplotlib import pyplot as plt
+
 class DeepLabV3MobileNetV2(nn.Module):
     def __init__(self):
         super(DeepLabV3MobileNetV2, self).__init__()
@@ -54,9 +56,13 @@ def mask_part(img: torch.Tensor, model_path: str, expected_size: tuple = (512, 5
     
     # Log error if part is not detected
     flag = mask.any()
-    log_level = logger.trace if flag else logger.error
-    log_message = f'{model_part} segmentation..........<green>SUCCESS</green>' if flag else f'{model_part} segmentation..........<red>FAILED</red>'
+    log_level = logger.debug if flag else logger.error
+    log_message = f'{model_part} segmentation... SUCCESS' if flag else f'{model_part} segmentation... FAILED'
     log_level(log_message)
+    
+    # Raise error if part is not detected
+    if not flag:
+        raise ValueError(f'{model_part} segmentation failed.')
     
     # Resize mask to expected size if needed
     if mask.shape != torch.Size(expected_size):
@@ -84,7 +90,7 @@ def generate_masks(img: Image) -> dict:
     # Process image
     _, mask_d = mask_part(img4disc_cup, os.path.join(MODELS_DIR, 'disc.pth'))
     _, mask_c = mask_part(img4disc_cup, os.path.join(MODELS_DIR, 'cup.pth'))
-    _, mask_f = mask_part(img4fovea, os.path.join(MODELS_DIR, 'fovea.pth'), expected_size=(224, 224))
+    _, mask_f = mask_part(img4fovea, os.path.join(MODELS_DIR, 'fovea.pth'))
     
     # Prepare output
     masks = {
@@ -144,12 +150,21 @@ def merge_masks(masks: dict) -> np.ndarray:
     Returns:
         np.ndarray: unified mask.
     """
-    unified_mask = np.zeros_like(next(iter(masks.values()))).astype(float)
+    # Create multi-dimensional unified mask by sticking masks together along the third axis
+    # Number of masks
+    n_masks = len(masks)
+    # Masks shape
+    mask_shape = np.unique([mask.shape for mask in masks.values()], axis=0)
+    if mask_shape.shape[0] != 1:
+        logger.error('All masks must have the same shape.')
+        raise ValueError('All masks must have the same shape.')
+    # Initialize unified mask
+    unified_mask = np.zeros((mask_shape[0][0], mask_shape[0][1], n_masks), dtype=np.uint8)
     
+    # Fill unified mask
     for idx, mask in enumerate(masks.values()):
-        
-        unified_mask[mask.astype(bool)] = idx + 1
-        
+        unified_mask[..., idx] = mask * (idx + 1)
+    
     return unified_mask
 
 def cdr_profile(mask:np.ndarray, ang_step:int=15) -> list:
@@ -184,6 +199,8 @@ def cdr_profile(mask:np.ndarray, ang_step:int=15) -> list:
         # Make copy of mask
         tmp_mask = np.zeros_like(mask, dtype=np.uint8)
         tmp_mask[(mask == i[0]) | (mask == i[1])] = 255
+        plt.imshow(tmp_mask)
+        plt.show()
         cnt, _ = cv2.findContours(tmp_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         ellipse = cv2.fitEllipse(cnt[0])
         ellipses.append(ellipse)
@@ -193,7 +210,10 @@ def cdr_profile(mask:np.ndarray, ang_step:int=15) -> list:
     
     # Check if ellipses are contained within each other
     if not is_ellipse_contained(ellipses[0], ellipses[1]):
+        logger.error('Cup ellipse is not contained within disc ellipse.')
         raise ValueError('Cup ellipse is not contained within disc ellipse.')
+    else:
+        logger.debug('Cup ellipse is contained within disc ellipse.')
     
     # Calculate centre as the midpoint between cup and disc ellipses centres
     centre = ((np.array(ellipses[0][0]) + np.array(ellipses[1][0])) / 2).reshape(-1,1)
@@ -206,7 +226,7 @@ def cdr_profile(mask:np.ndarray, ang_step:int=15) -> list:
     
     # Compute cup-to-disc ratio profile
     radii = np.array([distance.cdist(centre.T, i.T) for i in intersections])
-    cdr_profile = radii[0,:] / radii[1,:]   
+    cdr_profile = radii[0,:] / radii[1,:]
     
     # Prepare output
     out = []
