@@ -122,12 +122,14 @@ def get_centroid(mask:np.ndarray) -> tuple:
     Parameters
     ----------
     
-    mask (np.ndarray): Binary mask as a np.ndarray object.
+    mask (np.ndarray): Mask as a np.ndarray object.
         
     Returns
     -------
         tuple: Tuple containing the centroid coordinates (x, y).
-    """    
+    """
+    # Binarize mask
+    mask = mask / max(mask.flatten())
     # Compute centroid
     x_centroid = np.sum(np.argwhere(mask)[:,1]) / np.sum(mask)
     y_centroid = np.sum(np.argwhere(mask)[:,0]) / np.sum(mask)

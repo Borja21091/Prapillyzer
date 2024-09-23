@@ -284,7 +284,8 @@ def level_image(img:Image, mask:np.ndarray=None) -> tuple[np.ndarray, tuple[int,
 def rotate_2d_image(image: np.ndarray, angle: float) -> np.ndarray:
     """Rotate a 2D image by a given angle."""
     rot_matrix = cv2.getRotationMatrix2D((image.shape[1] // 2, image.shape[0] // 2), np.rad2deg(angle), 1)
-    return cv2.warpAffine(image, rot_matrix, (image.shape[1], image.shape[0]))
+    img = cv2.warpAffine(image, rot_matrix, (image.shape[1], image.shape[0]), flags=cv2.INTER_NEAREST)
+    return img
 
 def rotate_image(ang: float, img: np.ndarray) -> np.ndarray:
     """
@@ -306,7 +307,7 @@ def rotate_image(ang: float, img: np.ndarray) -> np.ndarray:
     if img.ndim == 2:
         return rotate_2d_image(img, ang)
     elif img.ndim >= 3:
-        rotated_slices = [rotate_2d_image(img[:, :, i], ang) for i in range(img.shape[2])]
+        rotated_slices = [rotate_2d_image(img[..., i], ang) for i in range(img.shape[2])]
         return np.stack(rotated_slices, axis=2)
     else:
         raise ValueError("Input image must be at least 2D.")

@@ -199,8 +199,6 @@ def cdr_profile(mask:np.ndarray, ang_step:int=15) -> list:
         # Make copy of mask
         tmp_mask = np.zeros_like(mask, dtype=np.uint8)
         tmp_mask[(mask == i[0]) | (mask == i[1])] = 255
-        plt.imshow(tmp_mask)
-        plt.show()
         cnt, _ = cv2.findContours(tmp_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         ellipse = cv2.fitEllipse(cnt[0])
         ellipses.append(ellipse)

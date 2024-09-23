@@ -9,6 +9,8 @@ import scipy.spatial.distance as distance
 from src.utils import save_results_to_csv, level_image, rotate_image, init_results_csv
 from src.masking import DeepLabV3MobileNetV2, cdr_profile, generate_masks, merge_masks, clean_segmentations
 
+from matplotlib import pyplot as plt
+
 def process_images_in_directory(directory: str):
     
     # Set up results CSV file
@@ -64,10 +66,7 @@ def process_image(img: Image, filename: str):
     logger.debug("Leveling image and mask.")
     img_level, fov_coord, disc_coord, ang = level_image(img, unified_mask)
     cup_coord = get_centroid(cleaned_masks.get('cup'))
-    
-    print(unified_mask.shape, np.unique(unified_mask[..., 2]))
     mask_level = rotate_image(ang, unified_mask)
-    print(mask_level.shape, np.unique(mask_level[..., 0]), np.unique(mask_level[..., 1]), np.unique(mask_level[..., 2]))
     
     # Compute cup-to-disc ratio profile
     try:
