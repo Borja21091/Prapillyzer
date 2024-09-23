@@ -184,7 +184,6 @@ def plot_levelled_image(img: np.ndarray, centre: tuple, intersections: tuple, el
 
 ####### IMAGE PROCESSING #######
 
-
 def level_image(img:Image, mask_f:np.ndarray=None, mask_d:np.ndarray=None) -> tuple[np.ndarray, tuple[int, int], tuple[int, int], float]:
     """
     Rotate a fundus image to make the line connecting the fovea and the disc horizontal.

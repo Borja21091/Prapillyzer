@@ -19,7 +19,7 @@ def process_images_in_directory(directory: str):
     n = len(file_list)
     for i, filename in tqdm(enumerate(file_list)):
         if filename.endswith(('.jpg', '.jpeg', '.png', '.bmp', '.tiff')):
-            logger.trace(f"({i + 1}/{n}) Processing {filename}")
+            logger.debug(f"({i + 1}/{n}) Processing {filename}")
             img_path = os.path.join(directory, filename)
             img = Image.open(img_path)
             process_image(img, filename)
