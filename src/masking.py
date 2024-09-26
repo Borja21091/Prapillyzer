@@ -56,9 +56,9 @@ def mask_part(img: torch.Tensor, model_path: str, expected_size: tuple = (512, 5
     
     # Log error if part is not detected
     flag = mask.any()
-    log_level = logger.debug if flag else logger.error
-    log_message = f'{model_part} segmentation... SUCCESS' if flag else f'{model_part} segmentation... FAILED'
-    log_level(log_message)
+    n_nonzero = torch.count_nonzero(mask)
+    log_message = f'{model_part} segmentation... {n_nonzero} pixels detected.'
+    logger.debug(log_message)
     
     # Raise error if part is not detected
     if not flag:
@@ -208,7 +208,6 @@ def cdr_profile(mask:np.ndarray, ang_step:int=15) -> list:
     
     # Check if ellipses are contained within each other
     if not is_ellipse_contained(ellipses[0], ellipses[1]):
-        logger.error('Cup ellipse is not contained within disc ellipse.')
         raise ValueError('Cup ellipse is not contained within disc ellipse.')
     else:
         logger.debug('Cup ellipse is contained within disc ellipse.')
