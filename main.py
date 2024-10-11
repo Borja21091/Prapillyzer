@@ -4,9 +4,10 @@ from tqdm import tqdm
 from PIL import Image
 from definitions import *
 from loguru import logger
+from definitions import RESULTS_DIR
 from src.geom import get_centroid
 import scipy.spatial.distance as distance
-from src.utils import save_results_to_csv, level_image, rotate_image, init_results_csv
+from src.utils import save_results_to_csv, level_image, rotate_image, init_results_csv, generate_results_plot
 from src.masking import DeepLabV3MobileNetV2, cdr_profile, generate_masks, merge_masks, clean_segmentations
 
 from matplotlib import pyplot as plt
@@ -135,12 +136,16 @@ def process_image(img: Image, filename: str):
     
     # # Save levelled image with ellipses
     # plot_levelled_image(img_level, centre, (sec_cup, sec_disc), ellipses, filename)
+    try:
+        generate_results_plot(img_level, centre, (sec_cup, sec_disc), ellipses, cdr, filename)
+    except Exception as e:
+        logger.error(f"Error generating results plot - {e}")
     
 if __name__ == '__main__':
     
     # Set data path
-    dataset = 'SMDG'
-    data_path = f'/home/borja/OneDrive/Postdoc/Datasets/{dataset}/full-fundus' # 'data' # '/media/borja/Seagate Expansion Drive/Rosetrees/Fundus2'
+    dataset = 'data'
+    data_path = f'{dataset}' # f'/home/borja/OneDrive/Postdoc/Datasets/{dataset}/full-fundus' # '/media/borja/Seagate Expansion Drive/Rosetrees/Fundus2'
     
     # Log to file
     logger.add(os.path.join(LOG_DIR, f'pCDR_{dataset}' + '_{time}.log'))

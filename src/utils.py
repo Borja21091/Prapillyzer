@@ -6,14 +6,14 @@ import pandas as pd
 from PIL import Image
 from loguru import logger
 from definitions import *
-from src.masking import mask_part
+from definitions import RESULTS_DIR
 from matplotlib import pyplot as plt
-from src.geom import get_centroid, get_rotation
-from torchvision.transforms import Compose, Resize, ToTensor, Normalize
+from torchvision.transforms import Compose
+from src.geom import get_centroid, get_rotation, bbox_ellipse
 
 ####### LOADING AND SAVING FUNCTIONS #######
 
-def init_results_csv():
+def init_results_csv(results_dir: str = RESULTS_DIR):
     """
     Initializes a results.csv file for storing results of a specific analysis.
     
@@ -33,56 +33,18 @@ def init_results_csv():
     >>> init_results_csv()
     """
     # Delete results.csv if it exists
-    if os.path.exists('results.csv'):
+    if os.path.exists(os.path.join(results_dir, 'results.csv')):
         logger.trace("Deleting existing results.csv file.")
-        os.remove('results.csv')
+        os.remove(os.path.join(results_dir, 'results.csv'))
     
     # Iintialize CSV file
-    with open('results.csv', 'x') as f:
+    with open(os.path.join(results_dir, 'results.csv'), 'x') as f:
         f.write('filename,masks,pcdr,eye,fovea_x,fovea_y,disc_x,disc_y,cup_x,cup_y,')
         f.write('d_discfov,disc_size,cup_size,norm_disc_size,norm_cup_size,rotation_angle,')
         f.write('vCDR,hCDR,')
         f.write(','.join([f'pcdr_{angle:d}' for angle in range(0, 180, 5)]) + ',\n')
         
     logger.success("CSV file results.csv created.")
-
-def save_pcdr_plot(cdr: list, filename: str):
-    """
-    Save a plot of the cup-to-disc ratio profile.
-    
-    Parameters:
-    ----------
-    
-        cdr (list): A list containing the cup-to-disc ratio data.
-        filename (str): The name of the file to save the plot.
-        
-    Returns:
-    -------
-    
-        None
-    """
-    
-    # Plot results
-    plt.figure(figsize=(10, 5))
-    plt.plot(cdr[0,:], cdr[1,:], 'k--', linewidth=0.5)
-    plt.scatter(cdr[0,:], cdr[1,:], s=3, c='k')
-    plt.xlabel('Angle (degrees)')
-    plt.ylabel('Cup-to-disc ratio')
-    plt.title('Cup-to-disc ratio profile')
-    plt.ylim([0, 1])
-    plt.grid()
-    # Overlay N S T I N labels on top of the X axis
-    angle = [0, 90, 180, 270, 360]
-    quadrant = ['N', 'S', 'T', 'I', 'N']
-    for a, q in zip(angle, quadrant):
-        plt.text(a, 0.025, q, fontsize=20, color='k', fontweight='bold')
-        
-    # Save plot
-    plot_path = './data/pcdr_plots'
-    if not os.path.exists(plot_path):
-        os.makedirs(plot_path)
-    plt.savefig(plot_path + '/' + filename.split('.')[0] + '.png')
-    plt.close()
     
 def save_unified_mask(mask: np.ndarray, ellipses: tuple, filename: str):
     """
@@ -113,7 +75,7 @@ def save_unified_mask(mask: np.ndarray, ellipses: tuple, filename: str):
     
     cv2.imwrite(mask_path + '/' + filename, out_mask)
 
-def save_results_to_csv(info: dict):
+def save_results_to_csv(info: dict, results_dir: str = RESULTS_DIR):
     """
     Save the given information to a CSV file.
 
@@ -128,10 +90,10 @@ def save_results_to_csv(info: dict):
         None
     """
     df = pd.DataFrame(info, index=[0])
-    if not os.path.exists('results.csv'):
-        df.to_csv('results.csv', index=False)
+    if not os.path.exists(os.path.join(results_dir, 'results.csv')):
+        df.to_csv(os.path.join(results_dir, 'results.csv'), index=False)
     else:
-        df.to_csv('results.csv', mode='a', header=False, index=False)
+        df.to_csv(os.path.join(results_dir, 'results.csv'), mode='a', header=False, index=False)
 
 ####### HELPER FUNCTIONS #######
 
@@ -146,11 +108,19 @@ def scale_coordinates(coord: tuple, img_shape: tuple, mask_shape: tuple) -> tupl
     y *= img_shape[0] / mask_shape[0]
     return x, y
 
+def fig2array(fig: plt.Figure, dpi=300) -> np.ndarray:
+    """Convert a matplotlib figure to a numpy array."""
+    fig.set_dpi(dpi)
+    fig.canvas.draw()
+    fig_array = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+    fig_array = fig_array.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    return fig_array
+
 ####### PLOTTING FUNCTIONS #######
 
-def plot_levelled_image(img: np.ndarray, centre: tuple, intersections: tuple, ellipses: list, filename: str):
+def generate_img_ellipse_plot(img: np.ndarray, centre: tuple, intersections: tuple, ellipses: list) -> plt.Figure:
     
-    plt.figure(figsize=(5.12, 5.12))
+    plt.figure()
     
     # Plot intersection points
     sec_cup, sec_disc = intersections
@@ -177,10 +147,107 @@ def plot_levelled_image(img: np.ndarray, centre: tuple, intersections: tuple, el
     # Plot centre
     plt.scatter(centre[0], centre[1], s=10, c='g')
     
-    # Add title
-    plt.title(filename.split('.')[0])
+    # Remove axes
+    plt.axis('off')
     
-    plt.show()
+    return plt.gcf()
+
+def generate_pcdr_plot(cdr: list) -> plt.Figure:
+    """
+    Generate a plot of the cup-to-disc ratio profile.
+    
+    Parameters:
+    ----------
+    
+        cdr (list): A list containing the cup-to-disc ratio data.
+        
+    Returns:
+    -------
+    
+        plt.Figure: The generated plot.
+    """
+    
+    # Plot results
+    plt.figure(figsize=(10, 5))
+    plt.plot(cdr[0,:], cdr[1,:], 'k--', linewidth=0.5)
+    plt.scatter(cdr[0,:], cdr[1,:], s=3, c='k')
+    plt.xlabel('Angle (degrees)')
+    plt.ylabel('Cup-to-disc ratio')
+    plt.title('Cup-to-disc ratio profile')
+    plt.ylim([0, 1])
+    plt.grid()
+    # Overlay N S T I N labels on top of the X axis
+    angle = [0, 90, 180, 270, 360]
+    quadrant = ['N', 'S', 'T', 'I', 'N']
+    for a, q in zip(angle, quadrant):
+        plt.text(a, 0.025, q, fontsize=20, color='k', fontweight='bold')
+    
+    return plt.gcf()
+
+def generate_results_plot(img: np.ndarray, centre: tuple, intersections: tuple, ellipses: list, cdr: list, filename: str) -> None:
+    """Generate a montage of:
+    
+        - Original image cropped around the optic disc
+        - Original image with the ellipses and intersection points overlaid cropped around the optic disc
+        - pCDR plot
+        
+    The two original images will go on the first row, side by side. The pCDR plot will span the entire second row.
+    
+    Parameters:
+    ----------
+    
+        img (np.ndarray): The original image.
+        centre (tuple): The centre of the image.
+        intersections (tuple): The intersection points of the ellipses.
+        ellipses (list): The ellipses fitted to the cup and disc.
+        filename (str): The name of the file to save the plot.
+    """
+    
+    # Create pcdr plot
+    pcdr_fig = generate_pcdr_plot(cdr)
+    
+    # Create original cropped image
+    bbox_disc = bbox_ellipse(ellipses[1])
+    radius = int(max(bbox_disc[2], bbox_disc[3]) * 2.5 // 2)
+    int_centre = (int(centre[0]), int(centre[1]))
+    cropped_img = crop_image(img.copy(), int_centre, radius)
+    
+    # Create cropped image with ellipses and intersection points
+    img_ellipses = generate_img_ellipse_plot(img, centre, intersections, ellipses)
+    cropped_img_ellipses = crop_image(fig2array(img_ellipses), int_centre, radius)
+    
+    # Generate montage
+    fig, ax = plt.subplots(2, 2, figsize=(10, 10))
+    ax[0, 0].imshow(cropped_img)
+    ax[0, 0].set_title('Original image')
+    ax[0, 0].axis('off')
+    ax[0, 1].imshow(cropped_img_ellipses)
+    ax[0, 1].set_title('Original image with ellipses')
+    ax[0, 1].axis('off')
+    ax[1, 0] = pcdr_fig
+    
+    # Save montage
+    plt.tight_layout()
+    plt.savefig(os.path.join(RESULTS_DIR, filename), dpi=300)
+
+def crop_image(img: np.ndarray, centre: tuple[int, int], radius: int) -> np.ndarray:
+    """
+    Crop an image around a given centre and radius.
+    
+    Parameters
+    ----------
+    
+        img (np.ndarray): The input image.
+        centre (tuple): The centre of the crop.
+        radius (int): The radius of the crop.
+        
+    Returns:
+    -------
+    
+        np.ndarray: The cropped image.
+    """
+    x, y = centre
+    return img[y-radius:y+radius, x-radius:x+radius]
 
 ####### IMAGE PROCESSING #######
 

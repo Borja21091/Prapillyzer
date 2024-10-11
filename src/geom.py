@@ -62,6 +62,36 @@ def implicit_ellipse(ellipse) -> tuple:
     
     return A, B, C, D, E, F
 
+def bbox_ellipse(ellipse) -> tuple:
+    """
+    Calculates the bounding box of a rotated ellipse.
+    
+    Parameters:
+    ----------
+    
+        ellipse (tuple): A tuple representing the ellipse, containing the following elements:
+            - ellipse[0] (tuple): The center coordinates of the ellipse (x0, y0).
+            - ellipse[1] (tuple): The major and minor axes of the ellipse (a, b).
+            - ellipse[2] (float): The angle of rotation of the ellipse in degrees.
+        
+    Returns:
+    -------
+    
+        tuple: A tuple containing the coordinates of the bounding box (x, y, w, h).
+    """
+    
+    x0, y0 = ellipse[0]
+    a, b = [ti/2 for ti in ellipse[1]]
+    theta = np.deg2rad(ellipse[2])
+    
+    # Calculate bounding box
+    x = x0 - a*np.cos(theta)
+    y = y0 - a*np.sin(theta)
+    w = 2*a
+    h = 2*b
+    
+    return x, y, int(w), int(h)
+
 def intersection_line_ellipse(m, n, ellipse, x0, y0) -> np.ndarray:
     """
     Calculates the intersection points between a line and an ellipse.
