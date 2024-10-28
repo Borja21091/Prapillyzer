@@ -1,16 +1,13 @@
 import os
 import numpy as np
-from tqdm import tqdm
 from PIL import Image
 from definitions import *
+from definitions import *
 from loguru import logger
-from definitions import RESULTS_DIR
 from src.geom import get_centroid
 import scipy.spatial.distance as distance
 from src.utils import save_results_to_csv, level_image, rotate_image, init_results_csv, generate_results_plot
 from src.masking import DeepLabV3MobileNetV2, cdr_profile, generate_masks, merge_masks, clean_segmentations
-
-from matplotlib import pyplot as plt
 
 def process_images_in_directory(directory: str):
     
@@ -21,7 +18,7 @@ def process_images_in_directory(directory: str):
     file_list = os.listdir(directory)
     file_list.sort()
     n = len(file_list)
-    for i, filename in tqdm(enumerate(file_list)):
+    for i, filename in enumerate(file_list):
         if filename.endswith(('.jpg', '.jpeg', '.png', '.bmp', '.tiff')):
             logger.debug(f"({i + 1}/{n}) Processing {filename}")
             img_path = os.path.join(directory, filename)
@@ -72,7 +69,6 @@ def process_image(img: Image, filename: str):
     # Compute cup-to-disc ratio profile
     try:
         centre, sec_cup, sec_disc, cdr, ellipses = cdr_profile(np.max(mask_level,axis=2), ang_step=5)
-        # print(sec_cup, '\n#################\n', sec_disc)
         info.update({'pcdr': True})
         logger.success("Cup-to-disc ratio profile computed successfully.")
     except Exception as e:
@@ -128,26 +124,15 @@ def process_image(img: Image, filename: str):
     save_results_to_csv(info)
     logger.success(f"Results saved to CSV.")
     
-    # # Save levelled mask
-    # save_unified_mask(mask_level, ellipses, filename)
-    
-    # # Save cdr profile plot
-    # save_pcdr_plot(cdr, filename)
-    
-    # # Save levelled image with ellipses
-    # plot_levelled_image(img_level, centre, (sec_cup, sec_disc), ellipses, filename)
-    try:
-        generate_results_plot(img_level, centre, (sec_cup, sec_disc), ellipses, cdr, filename)
-    except Exception as e:
-        logger.error(f"Error generating results plot - {e}")
+    # Save results image
+    if SAVE_RESULT_IMG:
+        logger.info("Generating results plot.")
+        # generate_results_plot(img_level, centre, (sec_cup, sec_disc), ellipses, cdr, filename)
+        try:
+            generate_results_plot(img_level, centre, (sec_cup, sec_disc), ellipses, cdr, filename)
+        except Exception as e:
+            logger.error(f"Error generating results plot - {e}")
     
 if __name__ == '__main__':
     
-    # Set data path
-    dataset = 'data'
-    data_path = f'{dataset}' # f'/home/borja/OneDrive/Postdoc/Datasets/{dataset}/full-fundus' # '/media/borja/Seagate Expansion Drive/Rosetrees/Fundus2'
-    
-    # Log to file
-    logger.add(os.path.join(LOG_DIR, f'pCDR_{dataset}' + '_{time}.log'))
-    
-    process_images_in_directory(data_path)
+    process_images_in_directory(DATA_DIR)
