@@ -2,4 +2,4 @@ src/models/*
 data/*
 results/*
 logs/*
-notebooks
+notebooks/*
