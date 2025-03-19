@@ -30,6 +30,11 @@ We'll use *Anaconda* to create a new Python environment and handle all the requi
 
 4. Check the ouput folder (default is `results/`) for the results. The folder should contain a file called `results.csv` with all the measurements. Images with the segmentations and CDR-Profiles will also be saved there if saving the result image is set as `True` in the config file.
 
+## Sample results
+
+![Sample 1 of CDR-Profiler](samples/BEH-49.png)
+![Sample 2 of CDR-Profiler](samples/BEH-53.png)
+
 ### Disclaimer
 
 Current implementation uses automatic segmentation of fovea, disc and cup. In future releases, the software will accept user generated masks.

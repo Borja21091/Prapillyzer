@@ -1,5 +1,6 @@
-src/models/*
-data/*
-results/*
+src/models/*.pth
+data/*.png
+results/*.png
+results/*.csv
 logs/*
 notebooks/*
