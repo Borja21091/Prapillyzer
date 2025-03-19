@@ -24,11 +24,13 @@ We'll use *Anaconda* to create a new Python environment and handle all the requi
 
 1. Modify the configuration parameters found in `cfg/config.ini` to suit your needs.
 
-2. Place all your images in the input folder you've set in the previous step. The software uses `data/` as the default folder to look for input images.
+2. Download the model weights from [here](https://github.com/Borja21091/CDR-Profiler/releases/tag/v1.0) (disc.pth, cup.pth, fovea.pth) and place those files in `src/models`
 
-3. Run `main.py`
+3. Place all your images in the input folder you've set in the previous step. The software uses `data/` as the default folder to look for input images.
 
-4. Check the ouput folder (default is `results/`) for the results. The folder should contain a file called `results.csv` with all the measurements. Images with the segmentations and CDR-Profiles will also be saved there if saving the result image is set as `True` in the config file.
+4. Run `main.py`
+
+5. Check the ouput folder (default is `results/`) for the results. The folder should contain a file called `results.csv` with all the measurements. Images with the segmentations and CDR-Profiles will also be saved there if saving the result image is set as `True` in the config file.
 
 ## Sample results
 
