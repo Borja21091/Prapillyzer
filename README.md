@@ -1,6 +1,6 @@
 # CDR Profiler
 
-The CDR - Profiler is an innovative software tool designed to extend and enhance the traditional Cup-to-Disc Ratio (CDR) measurement used in ophthalmic imaging. Unlike conventional methods that typically provide a single vertical or horizontal CDR value, this tool offers a comprehensive profile of CDR values around the entire optic disc.
+*Prapillyzer* (Profile + Papilla) is an innovative software tool designed to extend and enhance the traditional Cup-to-Disc Ratio (CDR) measurement used in ophthalmic imaging. Unlike conventional methods that typically provide a single vertical or horizontal CDR value, this tool offers a comprehensive profile of CDR values around the entire optic disc.
 
 ## Installation
 
